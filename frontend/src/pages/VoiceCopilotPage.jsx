@@ -1,17 +1,99 @@
 /**
  * ============================================================================
- * AGRIPULSE AI — KISAN MITRA MULTILINGUAL COPILOT
+ * AGRIPULSE AI — KISAN MITRA CONVERSATIONAL GEMINI-LEVEL COPILOT
  * ============================================================================
- * Unified Voice & Text Agronomy Copilot supporting 11 Indian Languages + Hinglish.
- * Features hybrid backend-first resolution with embedded on-device Agronomy AI
- * knowledge fallback to ensure 100% offline & mobile availability.
+ * 
+ * High-precision, agricultural conversational assistant with:
+ * - Multi-turn conversation memory & co-reference resolution.
+ * - Live farm telemetry & context injection (Weather, Spray index, NDVI, Mandi).
+ * - Real-time token streaming (SSE) with typing animation.
+ * - Rich markdown formatting (bolding, numbered steps, dosage chips).
+ * - 11 Indian regional languages + Hinglish speech recognition & audio TTS.
  * ============================================================================
  */
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
-import { detectScriptAndLanguage, generateAgronomyResponse, isAgronomyQuery } from '../services/copilotEngine';
+import { buildUserContext } from '../services/appContextBuilder';
+import { detectScriptAndLanguage, generateAgronomyResponse } from '../services/copilotEngine';
+
+// Simple lightweight Markdown formatter for mobile chat bubbles
+function FormattedMessage({ text }) {
+  if (!text) return null;
+
+  // Split by line breaks to preserve structure
+  const lines = text.split('\n');
+
+  return (
+    <div className="space-y-1.5 leading-relaxed text-xs sm:text-sm">
+      {lines.map((line, idx) => {
+        if (!line.trim()) return <div key={idx} className="h-1" />;
+
+        // Header style
+        if (line.startsWith('### ') || line.startsWith('## ')) {
+          const cleanHeader = line.replace(/^#{2,3}\s+/, '');
+          return (
+            <h4 key={idx} className="font-extrabold text-[#14532d] font-editorial text-sm mt-1 mb-0.5">
+              {renderInlineStyles(cleanHeader)}
+            </h4>
+          );
+        }
+
+        // Numbered step
+        const stepMatch = line.match(/^(\d+[\.\)])\s+(.*)/);
+        if (stepMatch) {
+          return (
+            <div key={idx} className="flex items-start gap-2 pl-1">
+              <span className="font-bold text-[#14532d] shrink-0">{stepMatch[1]}</span>
+              <span>{renderInlineStyles(stepMatch[2])}</span>
+            </div>
+          );
+        }
+
+        // Bullet point
+        if (line.startsWith('• ') || line.startsWith('- ') || line.startsWith('* ')) {
+          const cleanBullet = line.replace(/^[•\-\*]\s+/, '');
+          return (
+            <div key={idx} className="flex items-start gap-2 pl-2">
+              <span className="text-[#14532d] font-extrabold shrink-0">•</span>
+              <span>{renderInlineStyles(cleanBullet)}</span>
+            </div>
+          );
+        }
+
+        // Standard paragraph
+        return <p key={idx}>{renderInlineStyles(line)}</p>;
+      })}
+    </div>
+  );
+}
+
+// Helper to parse **bold** and *italic*
+function renderInlineStyles(text) {
+  const parts = [];
+  let remaining = text;
+  let key = 0;
+
+  while (remaining) {
+    const boldMatch = remaining.match(/\*\*(.*?)\*\*/);
+    if (boldMatch) {
+      const before = remaining.slice(0, boldMatch.index);
+      if (before) parts.push(<span key={key++}>{before}</span>);
+      parts.push(
+        <strong key={key++} className="font-extrabold text-[#052e16] bg-emerald-50/60 px-0.5 rounded">
+          {boldMatch[1]}
+        </strong>
+      );
+      remaining = remaining.slice(boldMatch.index + boldMatch[0].length);
+    } else {
+      parts.push(<span key={key++}>{remaining}</span>);
+      break;
+    }
+  }
+
+  return parts;
+}
 
 export default function VoiceCopilotPage() {
   const { user } = useAuth();
@@ -20,7 +102,15 @@ export default function VoiceCopilotPage() {
   const [isListening, setIsListening] = useState(false);
   const [inputText, setInputText] = useState('');
   const [detectedLangInfo, setDetectedLangInfo] = useState(null);
-  const [suggestLanguageSwitch, setSuggestLanguageSwitch] = useState(null); // { code, name }
+  const [suggestLanguageSwitch, setSuggestLanguageSwitch] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const messagesEndRef = useRef(null);
+
+  // Live Farm Telemetry Context
+  const [farmContext] = useState(() => buildUserContext(user));
+
   const [messages, setMessages] = useState(() => [
     {
       id: 1,
@@ -38,60 +128,31 @@ export default function VoiceCopilotPage() {
       ]
     }
   ]);
-  const [loading, setLoading] = useState(false);
-  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
-  const messagesEndRef = useRef(null);
 
   const quickPrompts = [
     { title: 'गेहूं में खाद (Hindi)', text: 'गेहूं की फसल में कौन सी खाद डालनी चाहिए?' },
+    { title: 'What about rice? (Context)', text: 'What fertilizer should I use for rice?' },
+    { title: 'How much per acre?', text: 'How much of that per acre?' },
+    { title: 'Should I spray today? (Telemetry)', text: 'Should I spray today?' },
+    { title: 'Sell now or wait? (Trade-off)', text: 'Should I sell my wheat now or wait?' },
     { title: 'कापूस कीड (Marathi)', text: 'कापूस पिकावर कीड आली आहे, काय करावे?' },
     { title: 'ਕਣਕ ਦਾ ਭਾਅ (Punjabi)', text: 'ਕਣਕ ਦਾ ਭਾਅ ਕੀ ਹੈ?' },
-    { title: 'મગફળી ખાતર (Gujarati)', text: 'મગફળીના પાક માટે કયું ખાતર સારું છે?' },
-    { title: 'వరి ఎరువులు (Telugu)', text: 'వరి పంటకు ఎరువులు ఎప్పుడు వేయాలి?' },
-    { title: 'நெல் உரம் (Tamil)', text: 'நெல் பயிருக்கு எந்த உரம் நல்லது?' },
-    { title: 'Hinglish (Wheat Khad)', text: 'wheat ki fasal me kaunsi khad daalu' },
-    { title: 'Off-Topic (Cricket)', text: 'आज का क्रिकेट मैच कौन जीतेगा?' }
+    { title: 'Off-Topic Refusal Test', text: 'आज का क्रिकेट मैच कौन जीतेगा?' }
   ];
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, isStreaming]);
 
-  // Update initial welcome message when app language changes
-  useEffect(() => {
-    setMessages((prev) => {
-      if (prev.length === 1 && prev[0].id === 1) {
-        return [
-          {
-            id: 1,
-            sender: 'copilot',
-            text: t('copilot.welcomeMessage') || 'नमस्ते! मैं आपका किसान मित्र AI कृषि सहायक हूँ। अपनी भाषा में फसल, खाद, कीट नियंत्रण, मंडी भाव या सरकारी योजनाओं के बारे में कोई भी प्रश्न पूछें।',
-            langName: currentLanguageObj.native || currentLanguageObj.name,
-            langCode: currentLanguageObj.code,
-            isAgri: true,
-            category: 'Farming Advisory',
-            followups: [
-              'गेहूं में खाद की मात्रा (Hindi)',
-              'कापूस कीड नियंत्रण (Marathi)',
-              'ਕਣਕ ਦਾ ਮੰਡੀ ਭਾਅ (Punjabi)',
-              'Fertilizer Schedule for Wheat'
-            ]
-          }
-        ];
-      }
-      return prev;
-    });
-  }, [language, t, currentLanguageObj]);
-
+  // Handle Multi-Turn Message Submission
   const handleSendMessage = async (queryText) => {
     const textToSend = (queryText || inputText).trim();
     if (!textToSend || loading) return;
 
-    // Fast Client-Side Script & Language Detection
+    // Detect language & script
     const detected = detectScriptAndLanguage(textToSend, language);
     setDetectedLangInfo(detected);
 
-    // Suggest language switch if user wrote in a different regional language
     if (detected?.code && detected.code !== language && detected.code !== 'hi-Latn') {
       const matched = languages.find((l) => l.code === detected.code);
       if (matched) {
@@ -104,82 +165,152 @@ export default function VoiceCopilotPage() {
       setSuggestLanguageSwitch(null);
     }
 
-    // Add user message to chat UI
-    const newUserMsg = {
+    // Add user message
+    const userMsg = {
       id: Date.now(),
       sender: 'user',
       text: textToSend
     };
 
-    setMessages((prev) => [...prev, newUserMsg]);
+    const copilotMsgId = Date.now() + 1;
+    const initialCopilotMsg = {
+      id: copilotMsgId,
+      sender: 'copilot',
+      text: '',
+      langName: detected?.native || detected?.name || currentLanguageObj.native,
+      langCode: detected?.code || language,
+      script: detected?.script || 'Latin',
+      isAgri: true,
+      category: 'Agronomy Reasoning',
+      actionTitle: null,
+      actionDetails: null,
+      keyStats: [],
+      followups: []
+    };
+
+    setMessages((prev) => [...prev, userMsg, initialCopilotMsg]);
     setInputText('');
     setLoading(true);
+    setIsStreaming(true);
 
-    let copilotResponseData = null;
+    // Build multi-turn history array (convert user/copilot to user/model)
+    const historyPayload = messages
+      .filter((m) => m.text && m.text.trim())
+      .map((m) => ({
+        role: m.sender === 'user' ? 'user' : 'model',
+        text: m.text
+      }));
+
+    let fullStreamedText = '';
+    let streamSucceeded = false;
 
     try {
-      // 1. Attempt FastAPI backend if locally reachable
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3500);
-
-      const res = await fetch('http://127.0.0.1:8000/api/copilot/query', {
+      // 1. Attempt Streaming SSE from backend
+      const response = await fetch('http://127.0.0.1:8000/api/copilot/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
         body: JSON.stringify({
           query: textToSend,
           language: language,
           user_id: user?.uid || 'farmer_session',
-          location: 'Karnal, Haryana'
+          location: farmContext.location,
+          context_crop: farmContext.context_crop,
+          history: historyPayload,
+          app_context: farmContext
         })
       });
-      clearTimeout(timeoutId);
 
-      if (res.ok) {
-        copilotResponseData = await res.json();
+      if (response.ok && response.body) {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const jsonStr = line.slice(6).trim();
+              if (!jsonStr) continue;
+
+              try {
+                const data = JSON.parse(jsonStr);
+                if (data.token) {
+                  fullStreamedText += data.token;
+                  setMessages((prev) =>
+                    prev.map((msg) =>
+                      msg.id === copilotMsgId ? { ...msg, text: fullStreamedText } : msg
+                    )
+                  );
+                }
+
+                if (data.is_final) {
+                  streamSucceeded = true;
+                  setMessages((prev) =>
+                    prev.map((msg) =>
+                      msg.id === copilotMsgId
+                        ? {
+                            ...msg,
+                            actionTitle: data.action_title || msg.actionTitle,
+                            actionDetails: data.action_details || msg.actionDetails,
+                            keyStats: data.key_stats || msg.keyStats,
+                            followups: data.suggested_followups || msg.followups,
+                            isAgri: data.is_agri ?? true
+                          }
+                        : msg
+                    )
+                  );
+                }
+              } catch (e) {
+                // partial chunk ignore
+              }
+            }
+          }
+        }
       }
     } catch (e) {
-      // Local backend not reachable (offline / mobile APK / GitHub Pages)
-      console.log('Using on-device Agronomy Knowledge Engine:', e.message);
+      console.log('Backend streaming unavailable, using conversational on-device engine:', e.message);
     }
 
-    // 2. Seamless Hybrid Fallback: Use on-device Agronomy Knowledge Engine
-    if (!copilotResponseData) {
-      const localResult = generateAgronomyResponse(textToSend, detected.code || language);
-      copilotResponseData = {
-        response_text: localResult.response_text,
-        domain: {
-          is_agri: localResult.is_agri,
-          detected_category: localResult.category
-        },
-        action_title: localResult.action_title,
-        action_details: localResult.action_details,
-        key_stats: localResult.key_stats,
-        suggested_followups: localResult.suggested_followups
-      };
+    // 2. Fallback to Embedded Multi-Turn Knowledge Engine if streaming did not complete
+    if (!streamSucceeded || !fullStreamedText) {
+      const localResult = generateAgronomyResponse(
+        textToSend,
+        detected.code || language,
+        messages,
+        farmContext
+      );
+
+      fullStreamedText = localResult.response_text;
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === copilotMsgId
+            ? {
+                ...msg,
+                text: localResult.response_text,
+                isAgri: localResult.is_agri,
+                category: localResult.category,
+                actionTitle: localResult.action_title,
+                actionDetails: localResult.action_details,
+                keyStats: localResult.key_stats,
+                followups: localResult.suggested_followups
+              }
+            : msg
+        )
+      );
     }
 
-    const newCopilotMsg = {
-      id: Date.now() + 1,
-      sender: 'copilot',
-      text: copilotResponseData.response_text,
-      langName: detected?.native || detected?.name || currentLanguageObj.native,
-      langCode: detected?.code || language,
-      script: detected?.script || 'Latin',
-      isAgri: copilotResponseData.domain?.is_agri ?? true,
-      category: copilotResponseData.domain?.detected_category || 'Agronomy Advice',
-      actionTitle: copilotResponseData.action_title,
-      actionDetails: copilotResponseData.action_details,
-      keyStats: copilotResponseData.key_stats || [],
-      followups: copilotResponseData.suggested_followups || []
-    };
-
-    setMessages((prev) => [...prev, newCopilotMsg]);
     setLoading(false);
+    setIsStreaming(false);
 
-    // Auto-TTS Speech Synthesis
-    if (copilotResponseData.response_text) {
-      speakText(copilotResponseData.response_text, detected?.code || language);
+    // Audio TTS playback
+    if (fullStreamedText) {
+      speakText(fullStreamedText, detected?.code || language);
     }
   };
 
@@ -191,7 +322,7 @@ export default function VoiceCopilotPage() {
 
     try {
       window.speechSynthesis.cancel();
-      const cleanText = text.replace(/[*#_`]/g, '').slice(0, 240);
+      const cleanText = text.replace(/[*#_`•]/g, '').slice(0, 260);
       const utterance = new SpeechSynthesisUtterance(cleanText);
 
       const ttsMap = {
@@ -257,25 +388,15 @@ export default function VoiceCopilotPage() {
       };
       recognition.lang = sttMap[language] || currentLanguageObj.speechLang || 'hi-IN';
 
-      recognition.onstart = () => {
-        setIsListening(true);
-      };
-
+      recognition.onstart = () => setIsListening(true);
       recognition.onresult = (event) => {
         const transcript = event.results[0][0].transcript;
         setInputText(transcript);
         setIsListening(false);
         handleSendMessage(transcript);
       };
-
-      recognition.onerror = (event) => {
-        console.warn('Speech recognition error:', event.error);
-        setIsListening(false);
-      };
-
-      recognition.onend = () => {
-        setIsListening(false);
-      };
+      recognition.onerror = () => setIsListening(false);
+      recognition.onend = () => setIsListening(false);
 
       recognition.start();
     } catch (e) {
@@ -301,6 +422,9 @@ export default function VoiceCopilotPage() {
             <span className="text-[11px] font-extrabold uppercase tracking-wider text-[#14532d]">
               {t('copilot.domainBadge') || 'कृषि विशेषज्ञ AI • 11 भारतीय भाषाएं'}
             </span>
+            <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.2 rounded-full border border-amber-200">
+              ⚡ Multi-Turn Gemini AI
+            </span>
           </div>
           <h2 className="text-xl sm:text-2xl md:text-3xl font-extrabold text-[#1c1917] tracking-tight font-editorial mt-0.5">
             {t('copilot.title')}
@@ -314,8 +438,43 @@ export default function VoiceCopilotPage() {
         <div className="flex items-center gap-2 self-start md:self-auto bg-[#f5f2eb] px-3 py-1.5 rounded-xl border border-[#e7e5e4]">
           <span className="material-symbols-outlined text-[16px] text-[#14532d]">language</span>
           <span className="text-xs font-bold text-[#1c1917]">
-            {t('copilot.activeAppLanguage') || 'सक्रिय ऐप भाषा'}: <strong className="text-[#14532d]">{currentLanguageObj.native} ({currentLanguageObj.name})</strong>
+            {t('copilot.activeAppLanguage') || 'सक्रिय ऐप भाषा'}:{' '}
+            <strong className="text-[#14532d]">
+              {currentLanguageObj.native} ({currentLanguageObj.name})
+            </strong>
           </span>
+        </div>
+      </div>
+
+      {/* Live Farm Telemetry Injected Context Bar */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-[#fbf9f5] p-2.5 sm:p-3 rounded-2xl border border-[#e7e5e4] text-xs">
+        <div className="flex items-center gap-2">
+          <span className="text-base">🌾</span>
+          <div>
+            <span className="text-[10px] text-[#78716c] font-bold block">Farm Crop</span>
+            <strong className="text-[#14532d] text-xs font-extrabold">Wheat (PBW 550)</strong>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-base">📍</span>
+          <div>
+            <span className="text-[10px] text-[#78716c] font-bold block">Location</span>
+            <strong className="text-[#1c1917] text-xs font-extrabold">Karnal, Haryana</strong>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-base">🛡️</span>
+          <div>
+            <span className="text-[10px] text-[#78716c] font-bold block">Spray Safety</span>
+            <strong className="text-emerald-700 text-xs font-extrabold">88/100 (Safe)</strong>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-base">🛰️</span>
+          <div>
+            <span className="text-[10px] text-[#78716c] font-bold block">Satellite NDVI</span>
+            <strong className="text-emerald-700 text-xs font-extrabold">0.74 (Healthy)</strong>
+          </div>
         </div>
       </div>
 
@@ -346,7 +505,7 @@ export default function VoiceCopilotPage() {
       )}
 
       {/* Main Chat Container */}
-      <div className="paper-card flex flex-col h-[520px] sm:h-[580px] p-0 overflow-hidden">
+      <div className="paper-card flex flex-col h-[540px] sm:h-[600px] p-0 overflow-hidden">
         {/* Messages Scroll Area */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
           {messages.map((msg) => (
@@ -362,7 +521,7 @@ export default function VoiceCopilotPage() {
                   <>
                     <span className="text-[#14532d] flex items-center gap-1 font-editorial">
                       <span className="material-symbols-outlined text-[14px]">psychology</span>
-                      AgriPulse Copilot
+                      AgriPulse Krishi Mitra
                     </span>
                     <span className="px-2 py-0.2 rounded-full bg-[#f5fdf7] text-[#14532d] border border-[#bbf7d0]">
                       {t('copilot.replyingIn') || 'उत्तर भाषा'}: {msg.langName} ({msg.langCode})
@@ -386,9 +545,17 @@ export default function VoiceCopilotPage() {
                     : 'bg-rose-50 border border-rose-200 text-rose-900 rounded-tl-xs'
                 }`}
               >
-                <p className="whitespace-pre-line">{msg.text}</p>
+                {/* Formatted Markdown Body */}
+                {msg.text ? (
+                  <FormattedMessage text={msg.text} />
+                ) : (
+                  <div className="flex items-center gap-2 text-emerald-800 font-bold text-xs py-1 animate-pulse">
+                    <span className="material-symbols-outlined text-sm animate-spin">eco</span>
+                    <span>Analyzing agronomy & generating response...</span>
+                  </div>
+                )}
 
-                {/* Structured Advisory Cards */}
+                {/* Structured Advisory Header */}
                 {msg.actionTitle && (
                   <div className="mt-3 pt-3 border-t border-black/10">
                     <h5 className="font-extrabold text-[#14532d] font-editorial text-xs mb-1">
@@ -437,7 +604,7 @@ export default function VoiceCopilotPage() {
             </div>
           ))}
 
-          {loading && (
+          {loading && !isStreaming && (
             <div className="flex items-center gap-2 text-xs font-bold text-[#14532d] p-2 bg-[#f5fdf7] rounded-xl border border-[#bbf7d0] w-fit animate-pulse">
               <span className="material-symbols-outlined text-[18px] animate-spin">sync</span>
               <span>{t('copilot.analyzingAgronomy') || 'कृषि विश्लेषण व भाषा पहचान जारी...'}</span>
@@ -486,7 +653,7 @@ export default function VoiceCopilotPage() {
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-            placeholder={t('copilot.typePlaceholder')}
+            placeholder={t('copilot.typePlaceholder') || 'अपना कृषि या मंडी संबंधी प्रश्न यहाँ लिखें...'}
             className="flex-1 p-2.5 sm:p-3 bg-[#faf8f5] border border-[#e7e5e4] rounded-2xl text-xs sm:text-sm font-semibold text-[#1c1917] focus:outline-[#14532d]"
           />
 

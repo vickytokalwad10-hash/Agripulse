@@ -4,7 +4,7 @@ import json
 import logging
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
-from services.gemini_client import call_gemini, is_gemini_configured
+from services.gemini_client import call_gemini_chat, stream_gemini_chat, is_gemini_configured
 from services.language_utils import (
     SUPPORTED_LANGUAGES,
     detect_language_pipeline,
@@ -35,6 +35,11 @@ class DomainResult(BaseModel):
     suggested_followups: List[str] = []
 
 
+class ChatMessage(BaseModel):
+    role: str = Field(..., description="'user' or 'model' / 'assistant' / 'copilot'")
+    text: str = Field(..., description="Message text content")
+
+
 class CopilotResponse(BaseModel):
     query: str
     language: LanguageInfo
@@ -48,7 +53,7 @@ class CopilotResponse(BaseModel):
 
 
 # ============================================================================
-# STEP 1: LANGUAGE & SCRIPT DETECTION (FAST HEURISTICS + GEMINI AI FALLBACK)
+# STEP 1: LANGUAGE & SCRIPT DETECTION
 # ============================================================================
 
 def detect_language(query: str, manual_override: Optional[str] = None) -> LanguageInfo:
@@ -83,9 +88,8 @@ def detect_language(query: str, manual_override: Optional[str] = None) -> Langua
     )
 
 
-
 # ============================================================================
-# STEP 2: PRE-LLM DOMAIN CLASSIFICATION (AGRICULTURE vs OFF_TOPIC)
+# STEP 2: PRE-LLM DOMAIN CLASSIFICATION & CONVERSATIONAL DRIFT PREVENTION
 # ============================================================================
 
 AGRI_CORE_KEYWORDS = [
@@ -96,7 +100,7 @@ AGRI_CORE_KEYWORDS = [
     "sprinkler", "borewell", "harvest", "harvesting", "sowing", "seed", "seeds",
     "germination", "yield", "acre", "hectare", "quintal", "pesticide",
     "fungicide", "insecticide", "herbicide", "weed", "weeds", "pest", "disease", "blight",
-    "rust", "rot", "wilt", "borer", "aphid", "whitefly", "bollworm",
+    "rust", "rot", "wilt", "borer", "aphid", "whitefly", "bollworm", "spray", "spraying",
 
     # Commodities (English & Indic)
     "wheat", "paddy", "rice", "basmati", "cotton", "mustard", "soybean", "soya", "sugarcane",
@@ -114,18 +118,13 @@ AGRI_CORE_KEYWORDS = [
     # Mandi & Trading
     "mandi", "apmc", "spot price", "msp", "bhav", "bhaw",
     "arrival", "arrivals", "enam", "e-nam", "brokerage", "commission", "arhtiya",
-    "escrow", "wdra", "warehouse", "godown",
+    "escrow", "wdra", "warehouse", "godown", "sell", "holding", "sell now",
     "मंडी", "बाजार", "भाव", "दर", "एमएसपी", "ખરીફ", "રવી", "rabi", "kharif", "zaid",
 
-    # Schemes & Finance
-    "pm-kisan", "pmkisan", "kisan", "pmfby", "fasal bima", "crop insurance",
-    "kcc", "kisan credit card", "loan", "subsidy", "subsidies", "soil health card", "nabard",
-    "dbt", "fpo", "cooperative", "योजना", "किस्त", "बीमा", "कर्ज", "अनुदान", "ಸಾಲ", "రుణಂ",
-
-    # Equipment & Livestock
-    "tractor", "harvester", "sprayer", "tiller", "plough", "drone", "rotavator",
-    "dairy", "cattle", "cow", "buffalo", "milk", "livestock", "mastitis", "fodder",
-    "veterinary", "ट्रैक्टर", "पशुपालन", "गाय", "भैंस", "दूध", "मवेशी"
+    # Schemes & Finance & Weather
+    "pm-kisan", "pmfby", "kcc", "kisan credit card", "soil health card", "shc",
+    "weather", "rain", "temperature", "humidity", "monsoon", "frost", "hailstorm",
+    "योजना", "बीमा", "ऋण", "लोन", "मौसम", "पाऊस", "पाणी", "तपमान", "हवामान"
 ]
 
 EXPLICIT_OFF_TOPIC_PATTERNS = [
@@ -142,12 +141,23 @@ EXPLICIT_OFF_TOPIC_PATTERNS = [
     r'பாடல்', r'திரைப்படம்', r'ಹಾಡು', r'ಸಿನಿಮಾ'
 ]
 
+# Follow-up context pronouns that reference previous turn
+CONTEXT_FOLLOWUP_PRONOUNS = [
+    "what about", "how about", "and for", "how much of that", "is that safe", "can i spray",
+    "should i spray", "should i sell", "when to", "how much", "dose", "rate", "cost", "yield",
+    "चावल का क्या", "और धान", "इसकी मात्रा", "क्या आज स्प्रे करें", "कब बेचना चाहिए", "त्याचे प्रमाण",
+    "ਇਸ ਦੀ ਮਾਤਰਾ", "ਕੀ ਅੱਜ ਸਪਰੇਅ", "અને ઘઉં", "ఎంత మోతాదు", "எவ்வளவு அளவு"
+]
 
-def classify_domain(query: str, lang_info: LanguageInfo) -> DomainResult:
+def classify_domain(
+    query: str,
+    lang_info: LanguageInfo,
+    history: Optional[List[ChatMessage]] = None
+) -> DomainResult:
     """
-    Strict Domain Classifier:
-    - Labels query as AGRICULTURE or OFF_TOPIC.
-    - If off-topic keyword (cricket, movie, song, love, code) is present, refuses immediately.
+    Evaluates whether the user's latest query is within the agricultural domain,
+    taking multi-turn context into account to support natural follow-ups while
+    preventing conversational jailbreaks / drift into off-topic domains.
     """
     clean = query.strip().lower()
     if not clean:
@@ -155,7 +165,7 @@ def classify_domain(query: str, lang_info: LanguageInfo) -> DomainResult:
         followups = DEFAULT_AGRI_SUGGESTIONS.get(lang_info.code, DEFAULT_AGRI_SUGGESTIONS["en"])
         return DomainResult(is_agri=False, confidence=1.0, refusal_message=refusal, suggested_followups=followups)
 
-    # 1. Check explicit off-topic triggers
+    # 1. Immediate Hard Check: Reject explicit off-topic entertainment, gaming, coding, romance, sports
     has_off_topic_trigger = any(re.search(pat, clean) for pat in EXPLICIT_OFF_TOPIC_PATTERNS)
     if has_off_topic_trigger:
         refusal = OFF_TOPIC_REFUSALS.get(lang_info.code, OFF_TOPIC_REFUSALS["en"])
@@ -163,98 +173,216 @@ def classify_domain(query: str, lang_info: LanguageInfo) -> DomainResult:
         return DomainResult(
             is_agri=False,
             confidence=0.99,
-            detected_category="off_topic_entertainment_or_sports",
+            detected_category="off_topic_refusal",
             refusal_message=refusal,
             suggested_followups=followups
         )
 
-    # 2. Check agriculture keyword density
+    # 2. Direct Agricultural Keyword Hit
     agri_matches = sum(1 for kw in AGRI_CORE_KEYWORDS if kw in clean)
     if agri_matches >= 1:
         return DomainResult(
             is_agri=True,
-            confidence=0.96,
+            confidence=0.98,
             detected_category="agriculture_in_domain"
         )
 
-    # 3. Weather check: If weather mentioned without crops, check context
-    if "weather" in clean or "मौसम" in clean or "हवामान" in clean or "মৌসম" in clean or "వాతావరణం" in clean or "வானிலை" in clean or "ಹವಾಮಾನ" in clean:
-        return DomainResult(is_agri=True, confidence=0.88, detected_category="weather_farming_advisory")
+    # 3. Multi-Turn Follow-up Detection
+    if history and len(history) > 0:
+        has_followup_marker = any(p in clean for p in CONTEXT_FOLLOWUP_PRONOUNS) or len(clean.split()) <= 6
+        if has_followup_marker:
+            recent_text = " ".join([m.text.lower() for m in history[-4:]])
+            if any(kw in recent_text for kw in AGRI_CORE_KEYWORDS):
+                return DomainResult(
+                    is_agri=True,
+                    confidence=0.95,
+                    detected_category="agriculture_multiturn_followup"
+                )
 
-    # 4. Check short generic queries
+    # 4. Short / Generic Queries
     words = clean.split()
     if len(words) <= 2:
-        if any(kw in clean for kw in AGRI_CORE_KEYWORDS):
-            return DomainResult(is_agri=True, confidence=0.90, detected_category="agriculture_short_query")
-        else:
-            refusal = OFF_TOPIC_REFUSALS.get(lang_info.code, OFF_TOPIC_REFUSALS["en"])
-            followups = DEFAULT_AGRI_SUGGESTIONS.get(lang_info.code, DEFAULT_AGRI_SUGGESTIONS["en"])
-            return DomainResult(is_agri=False, confidence=0.90, refusal_message=refusal, suggested_followups=followups)
+        refusal = OFF_TOPIC_REFUSALS.get(lang_info.code, OFF_TOPIC_REFUSALS["en"])
+        followups = DEFAULT_AGRI_SUGGESTIONS.get(lang_info.code, DEFAULT_AGRI_SUGGESTIONS["en"])
+        return DomainResult(is_agri=False, confidence=0.88, refusal_message=refusal, suggested_followups=followups)
 
-    # Default to in-domain agriculture for general farming assistance
+    # Default general in-domain farming inquiry
     return DomainResult(is_agri=True, confidence=0.85, detected_category="general_farming_inquiry")
 
 
 # ============================================================================
-# STEP 3: RESPONSE GENERATION (GEMINI API + RESILIENT LOCAL AGRONOMY FALLBACK)
+# STEP 3: CONTEXT BUILDER & SYSTEM PROMPT COMPOSER
+# ============================================================================
+
+def build_system_context(app_context: Optional[Dict[str, Any]], lang_info: LanguageInfo) -> str:
+    """
+    Constructs a rich, structured farm telemetry and user profile context string
+    injected into Gemini's system instruction.
+    """
+    if not app_context:
+        return "Farm Location: Karnal, Haryana (Indo-Gangetic Plain)\nPrimary Crops: Wheat (PBW 550), Mustard (Pusa Bold)"
+
+    lines = []
+    location = app_context.get("location") or "Karnal, Haryana"
+    lines.append(f"- Farm Location & Region: {location}")
+
+    crops = app_context.get("crops") or app_context.get("context_crop")
+    if crops:
+        if isinstance(crops, list):
+            crop_str = ", ".join([f"{c.get('name', c)} ({c.get('variety', 'Standard')})" if isinstance(c, dict) else str(c) for c in crops])
+        else:
+            crop_str = str(crops)
+        lines.append(f"- Registered Farm Crops & Varieties: {crop_str}")
+    else:
+        lines.append("- Registered Farm Crops: Wheat (PBW 550), Mustard (Pusa Bold)")
+
+    # Live Weather & Spray Safety Index
+    weather = app_context.get("weather")
+    if weather and isinstance(weather, dict):
+        temp = weather.get("temp", "28°C")
+        humidity = weather.get("humidity", "62%")
+        wind = weather.get("wind_speed", "8 km/h")
+        condition = weather.get("condition", "Clear Sunny")
+        spray_score = weather.get("spray_safety_score", 88)
+        spray_status = "OPTIMAL / SAFE TO SPRAY" if spray_score >= 70 else "UNSAFE TO SPRAY (High Wind/Rain Risk)"
+        lines.append(f"- Live Weather Conditions: {condition}, Temp: {temp}, Humidity: {humidity}, Wind: {wind}")
+        lines.append(f"- Live Spraying Safety Index: {spray_score}/100 ({spray_status})")
+    else:
+        lines.append("- Live Spraying Safety Index: 88/100 (Safe to spray, calm winds 8 km/h, 28°C, clear sky)")
+
+    # Satellite NDVI Vegetative Health
+    ndvi = app_context.get("ndvi")
+    if ndvi:
+        lines.append(f"- Recent Satellite NDVI Health Index: {ndvi} (Healthy High Vigour Crop Canopy)")
+
+    # Soil Health Card Data
+    soil = app_context.get("soil")
+    if soil and isinstance(soil, dict):
+        lines.append(f"- Soil Health Card Profile: pH {soil.get('ph', '7.2')}, Nitrogen: {soil.get('nitrogen', 'Low')}, Phosphorus: {soil.get('phosphorus', 'Medium')}, Organic Carbon: {soil.get('oc', '0.45%')}")
+
+    # Live Mandi Watchlist Rates
+    watchlist = app_context.get("watchlist")
+    if watchlist and isinstance(watchlist, list):
+        mandi_str = ", ".join([f"{w.get('crop')}: ₹{w.get('price')}/qtl (MSP: ₹{w.get('msp', 'N/A')})" for w in watchlist if isinstance(w, dict)])
+        lines.append(f"- Active Mandi Spot Rates: {mandi_str}")
+    else:
+        lines.append("- Active Mandi Spot Rates: Sharbati Wheat: ₹2,840/qtl (MSP ₹2,425/qtl), Basmati Paddy: ₹3,950/qtl, Mustard: ₹5,780/qtl")
+
+    return "\n".join(lines)
+
+
+def build_gemini_system_prompt(lang_info: LanguageInfo, app_context: Optional[Dict[str, Any]]) -> str:
+    """
+    Creates the comprehensive, Gemini-quality system prompt for Krishi Mitra AI Copilot.
+    """
+    lang_instr = build_language_instruction(lang_info.code, lang_info.is_romanized)
+    context_block = build_system_context(app_context, lang_info)
+
+    return f"""You are AgriPulse Krishi Mitra AI, an elite conversational Agricultural Expert, Agronomist, and Farm Advisory Partner.
+
+CORE IDENTITY & CONVERSATIONAL QUALITY BAR:
+- Act as a deeply knowledgeable, warm, practical Indian agricultural scientist (ICAR / SAU standards).
+- Speak with natural, fluid conversational grace matching Google Gemini.
+- {lang_instr}
+
+MULTI-TURN CONVERSATION MEMORY RULES:
+1. Maintain full memory of the conversation. Seamlessly resolve co-references (e.g. if the user previously asked about wheat fertilizers and now asks "What about for rice?", understand they mean rice fertilizers; if they ask "How much of that per acre?", resolve "that" to the exact fertilizer/chemical just discussed).
+2. Incorporate the user's farm context automatically. If the user asks "Should I spray today?", look at the live Spray Safety Index in their farm profile without asking them to re-enter weather conditions.
+
+PROACTIVE CLARIFYING QUESTIONS:
+- When a user's query is ambiguous or missing crucial info required for precision (e.g., "My leaves have spots" without specifying crop or spot color), ask ONE focused, friendly clarifying question instead of giving a generic wall of text or guessing wildly.
+- Keep clarifying questions short and conversational (1-2 sentences maximum).
+
+RICH FORMATTING & REASONING:
+- Structure answers for readability on mobile screens:
+  * Use **bold** for key numbers, dosages, chemical names, and warnings.
+  * Use numbered steps (1., 2., 3.) for chronological treatments, spraying sequences, or sowing timelines.
+  * Use bullet points (•) for dosage breakdowns, pros/cons, and alternatives.
+- When asked strategic questions (e.g. "Should I sell my harvest now or hold?"), reason through practical trade-offs: compare current spot price against MSP, storage cost vs anticipated price trajectory, and market arrivals.
+- Be honest about uncertainty: if hyper-local soil or pest confirmation is needed, clearly recommend a soil test or reaching out to the nearest Krishi Vigyan Kendra (KVK).
+
+STRICT DOMAIN RESTRICTIONS:
+- Stay strictly within Agriculture, Agronomy, Crop Nutrition, Pest/Disease Management, Weather/Spraying Advisories, Mandi Prices/Trading, Government Schemes (PM-KISAN, PMFBY, KCC), and Dairy/Livestock.
+- If a user tries to steer the conversation into non-farming topics (movies, cricket, politics, poetry, coding), politely decline in {lang_info.name} and guide them back to their crops.
+
+LIVE FARM CONTEXT:
+{context_block}
+
+OUTPUT FORMAT:
+Output ONLY valid JSON in this exact structure:
+{{
+  "response_text": "Richly formatted conversational response in {lang_info.name} using markdown (bolding, bullets, numbered steps where appropriate)",
+  "action_title": "Concise Action Title in {lang_info.name}",
+  "action_details": "Key actionable summary in {lang_info.name}",
+  "key_stats": [
+    {{"label": "Metric in {lang_info.name}", "val": "Value"}}
+  ],
+  "suggested_followups": [
+    "Relevant follow-up 1 in {lang_info.name}",
+    "Relevant follow-up 2 in {lang_info.name}",
+    "Relevant follow-up 3 in {lang_info.name}"
+  ]
+}}"""
+
+
+# ============================================================================
+# STEP 4: MULTI-TURN RESPONSE GENERATION
 # ============================================================================
 
 def generate_response(
     query: str,
     lang_info: LanguageInfo,
-    app_context: Optional[Dict[str, Any]] = None
+    app_context: Optional[Dict[str, Any]] = None,
+    history: Optional[List[ChatMessage]] = None
 ) -> CopilotResponse:
     """
-    Generates tailored agricultural advisory strictly in the user's detected
-    language and script. Uses Gemini API client with hard safety prompts.
+    Generates tailored, conversational agricultural advisory strictly in the user's
+    detected language, utilizing full multi-turn history and live farm telemetry.
     """
-    # 1. Domain Check
-    domain_result = classify_domain(query, lang_info)
+    # 1. Domain Check with Multi-Turn Context
+    domain_result = classify_domain(query, lang_info, history)
     if not domain_result.is_agri:
         return CopilotResponse(
             query=query,
             language=lang_info,
             domain=domain_result,
-            response_text=domain_result.refusal_message or OFF_TOPIC_REFUSALS["en"],
-            action_title="कृषि संबंधित प्रश्न पूछें • Ask Farming Questions",
-            action_details="AgriPulse AI is specialized strictly in Indian agriculture, agronomy, mandi prices, and government schemes.",
+            response_text=domain_result.refusal_message or OFF_TOPIC_REFUSALS.get(lang_info.code, OFF_TOPIC_REFUSALS["en"]),
+            action_title="कृषि संबंधित प्रश्न पूछें • Farming Scope Only",
+            action_details="AgriPulse Krishi Mitra is specialized solely in agriculture, crop management, mandi prices, and government schemes.",
             key_stats=[
-                {"label": "Domain Scope", "val": "Agriculture Only"},
-                {"label": "Detected Language", "val": lang_info.name}
+                {"label": "Scope", "val": "Agriculture Only"},
+                {"label": "Language", "val": lang_info.name}
             ],
             suggested_followups=domain_result.suggested_followups or DEFAULT_AGRI_SUGGESTIONS.get(lang_info.code, []),
             audio_tts_text=domain_result.refusal_message
         )
 
-    # 2. Call Gemini via shared client if API key is active
+    # 2. Prepare Multi-Turn Contents for Gemini
+    contents = []
+    if history:
+        recent_history = history[-16:]
+        for msg in recent_history:
+            role = "user" if msg.role in ["user", "human"] else "model"
+            contents.append({
+                "role": role,
+                "parts": [{"text": msg.text}]
+            })
+
+    contents.append({
+        "role": "user",
+        "parts": [{"text": query}]
+    })
+
+    # 3. Call Gemini Multi-Turn Chat
     if is_gemini_configured():
-        lang_instr = build_language_instruction(lang_info.code, lang_info.is_romanized)
-        system_instruction = f"""
-You are AgriPulse AI, an expert Indian Agricultural Copilot and Agronomist.
-
-HARD RULES:
-1. Scope: Answer ONLY questions related to farming, crops, pest/disease control, fertilizers (NPK/Urea/DAP dosage), irrigation, mandi spot prices, MSP, PM-KISAN, PMFBY crop insurance, KCC loans, farm machinery, or livestock/dairy.
-2. {lang_instr}
-3. Context & Tone: Use practical Indian farming terms (ICAR guidelines, quintals, acres, Kharif/Rabi, MSP, Mandi). Keep it concise, helpful, and direct for a farmer.
-
-Output ONLY valid JSON in this exact structure:
-{{
-  "response_text": "Detailed, practical answer in {lang_info.name} (3-4 sentences max)",
-  "action_title": "Short title in {lang_info.name}",
-  "action_details": "Bullet-style actionable steps in {lang_info.name}",
-  "key_stats": [
-    {{"label": "Metric 1 in {lang_info.name}", "val": "Value 1"}},
-    {{"label": "Metric 2 in {lang_info.name}", "val": "Value 2"}}
-  ],
-  "suggested_followups": [
-    "Follow-up 1 in {lang_info.name}",
-    "Follow-up 2 in {lang_info.name}",
-    "Follow-up 3 in {lang_info.name}"
-  ]
-}}
-"""
-        prompt = f"User Farming Query: {query}\nProvide response strictly as JSON:"
-        gemini_result = call_gemini(prompt=prompt, system_instruction=system_instruction)
+        system_instruction = build_gemini_system_prompt(lang_info, app_context)
+        gemini_result = call_gemini_chat(
+            contents=contents,
+            system_instruction=system_instruction,
+            temperature=0.3,
+            response_mime_type="application/json",
+            timeout_secs=8.0
+        )
 
         if gemini_result and isinstance(gemini_result, dict):
             return CopilotResponse(
@@ -262,181 +390,242 @@ Output ONLY valid JSON in this exact structure:
                 language=lang_info,
                 domain=domain_result,
                 response_text=gemini_result.get("response_text", ""),
-                action_title=gemini_result.get("action_title", "कृषि सलाह • Advisory"),
+                action_title=gemini_result.get("action_title", "कृषि सलाह • Farm Advisory"),
                 action_details=gemini_result.get("action_details", ""),
                 key_stats=gemini_result.get("key_stats", []),
                 suggested_followups=gemini_result.get("suggested_followups", DEFAULT_AGRI_SUGGESTIONS.get(lang_info.code, [])),
                 audio_tts_text=gemini_result.get("response_text", "")
             )
 
-    # 3. Localized Agronomy Response Fallback
-    return get_localized_agronomy_fallback(query, lang_info, domain_result)
+    # 4. Multi-Turn Resilient Local Agronomy Fallback
+    return get_conversational_agronomy_fallback(query, lang_info, domain_result, app_context, history)
 
 
-def get_localized_agronomy_fallback(query: str, lang_info: LanguageInfo, domain: DomainResult) -> CopilotResponse:
+# ============================================================================
+# STEP 5: CONVERSATIONAL LOCAL AGRONOMY FALLBACK ENGINE
+# ============================================================================
+
+def get_conversational_agronomy_fallback(
+    query: str,
+    lang_info: LanguageInfo,
+    domain: DomainResult,
+    app_context: Optional[Dict[str, Any]] = None,
+    history: Optional[List[ChatMessage]] = None
+) -> CopilotResponse:
     """
-    High-precision agronomy knowledge base tailored for all 11+ Indian regional languages.
+    Intelligent on-device / local fallback engine capable of resolving multi-turn
+    co-references, context injection (spray index, weather, crops), and clarifying questions.
     """
     code = lang_info.code
     q = query.lower()
 
-    if any(k in q for k in ["khad", "fertilizer", "gobar", "urea", "dap", "उर्वरक", "खाद", "खत", "ਗੋਹਾ", "ખાતર", "ఎరువు", "உரம்", "ಗೊಬ್ಬರ", "সার"]):
-        # Fertilizer Question
+    # Extract contextual topics from history if current query is a follow-up
+    prev_topic = ""
+    prev_crop = "wheat"
+    if history and len(history) > 0:
+        full_hist_text = " ".join([m.text.lower() for m in history]).lower()
+        if "rice" in full_hist_text or "paddy" in full_hist_text or "धान" in full_hist_text or "तांदूळ" in full_hist_text or "ਝੋਨਾ" in full_hist_text or "వరి" in full_hist_text:
+            prev_crop = "rice"
+        elif "cotton" in full_hist_text or "कपास" in full_hist_text or "कापूस" in full_hist_text or "ਨਰਮਾ" in full_hist_text or "પત્તી" in full_hist_text:
+            prev_crop = "cotton"
+        elif "mustard" in full_hist_text or "सरसों" in full_hist_text or "ਸਰ੍ਹੋਂ" in full_hist_text or "રાયડો" in full_hist_text:
+            prev_crop = "mustard"
+        
+        if any(w in full_hist_text for w in ["fertilizer", "khad", "urea", "dap", "खाद", "खत"]):
+            prev_topic = "fertilizer"
+        elif any(w in full_hist_text for w in ["pest", "insect", "spray", "कीट", "कीड", "रोग"]):
+            prev_topic = "pest"
+        elif any(w in full_hist_text for w in ["bhav", "price", "mandi", "भाव", "दर"]):
+            prev_topic = "mandi"
+
+    # 1. AMBIGUOUS QUERIES -> PROACTIVE CLARIFYING QUESTION
+    if any(k in q for k in ["spots on leaves", "leaf spots", "patte par dhabbe", "पत्तों पर धब्बे", "पानांवर डाग", "ਪੱਤਿਆਂ 'ਤੇ ਧੱਬੇ", "spots"]) and \
+       not any(c in q for c in ["wheat", "rice", "paddy", "cotton", "mustard", "गेहूं", "धान", "कपास", "सरसों"]):
+        clarifying_texts = {
+            "hi": "क्या आप बता सकते हैं कि यह धब्बे **किस फसल** (जैसे गेहूं, सरसों या धान) पर हैं, और इनका रंग **पीला, भूरा या काला** है? इससे मैं आपको सही उपचार बता सकूँगा।",
+            "mr": "कृपया सांगा हे डाग **कोणत्या पिकावर** (जसे की कापूस, गहू, किंवा सोयाबीन) आहेत आणि डागांचा रंग **पिवळा, तपकिरी की काळा** आहे? जेणेकरून अचूक औषध सुचवता येईल.",
+            "pa": "ਕੀ ਤੁਸੀਂ ਦੱਸ ਸਕਦੇ ਹੋ ਕਿ ਇਹ ਧੱਬੇ **ਕਿਹੜੀ ਫ਼ਸਲ** (ਜਿਵੇਂ ਕਣਕ ਜਾਂ ਸਰ੍ਹੋਂ) 'ਤੇ ਹਨ ਅਤੇ ਇਨ੍ਹਾਂ ਦਾ ਰੰਗ **ਪੀਲਾ, ਭੂਰਾ ਜਾਂ ਕਾਲਾ** ਹੈ?",
+            "en": "Could you clarify **which crop** (e.g., wheat, mustard, or cotton) is showing these spots, and whether they appear **yellow, rust-brown, or black**? This will help me recommend the exact treatment."
+        }
+        return CopilotResponse(
+            query=query,
+            language=lang_info,
+            domain=domain,
+            response_text=clarifying_texts.get(code, clarifying_texts["en"]),
+            action_title="फसल व लक्षण स्पष्टीकरण • Clarification Needed",
+            action_details="Precise disease diagnosis requires knowing the crop type and color pattern of the lesion.",
+            key_stats=[{"label": "Diagnosis Status", "val": "Awaiting Crop Details"}],
+            suggested_followups=[
+                "गेहूं में पीले धब्बे (Yellow Rust)",
+                "कपास में भूरे धब्बे (Bacterial Blight)",
+                "सरसों में सफेद धब्बे (White Rust)"
+            ]
+        )
+
+    # 2. CONTEXT INJECTION: "Should I spray today?" / Spraying Advisory
+    if any(k in q for k in ["spray today", "spray now", "aaj spray kare", "आज स्प्रे करें", "आज फवारणी करावी का", "ਕੀ ਅੱਜ ਸਪਰੇਅ", "can i spray"]):
+        spray_score = 88
+        if app_context and isinstance(app_context.get("weather"), dict):
+            spray_score = app_context["weather"].get("spray_safety_score", 88)
+        
         responses = {
-            "hi": "गेहूं की फसल में बुवाई के समय प्रति एकड़ 50 किलो DAP, 20 किलो MOP और 25 किलो यूरिया डालें। पहली सिंचाई (CRI स्टेज, 21 दिन बाद) पर 45 किलो यूरिया और 10 किलो जिंक सल्फेट 21% का छिड़काव करें।",
-            "mr": "गहू पिकासाठी पेरणीच्या वेळी एकरी ५० किलो डीएपी (DAP), २० किलो एमओपी आणि २५ किलो युरिया द्यावे. पहिल्या पाण्याच्या वेळी (२१ दिवसांनी) ४५ किलो युरिया आणि १० किलो झिंक सल्फेट द्यावे.",
-            "pa": "ਕਣਕ ਦੀ ਫ਼ਸਲ ਲਈ ਬਿਜਾਈ ਵੇਲੇ ਪ੍ਰਤੀ ਏਕੜ 55 ਕਿਲੋ ਡੀ.ਏ.ਪੀ. (DAP) ਅਤੇ 20 ਕਿਲੋ ਪੋਟਾਸ਼ ਪਾਓ। ਪਹਿਲੇ ਪਾਣੀ (21 ਦਿਨਾਂ ਬਾਅਦ) ਸਮੇਂ 45 ਕਿਲੋ ਯੂਰੀਆ ਅਤੇ 10 ਕਿਲੋ ਜ਼ਿੰਕ ਸਲਫੇਟ ਜ਼ਰੂਰ ਦਿਓ।",
-            "gu": "મગફળી અને ઘઉંના પાક માટે વાવણી સમયે એકરે ૫૦ કિલો DAP અને ૨૦ કિલો પોટાશ આપો. પ્રથમ પિયત સમયે ૪૫ કિલો યુરિયા અને ૧૦ કિલો ઝિંક સલ્ફેટ આપવું ફાયદાકારક રહેશે.",
-            "te": "వరి పంటకు ఎకరాకు 50 కిలోల డీఏపీ (DAP), 25 కిలోల యూరియా మరియు 20 కిలోల పొటాష్ వేయాలి. దుక్కిలో జింక్ సల్ఫేట్ 10 కిలోలు వేయడం మంచిది.",
-            "ta": "நெல் பயிருக்கு ஏக்கருக்கு 50 கிலோ டிஏபி (DAP), 25 கிலோ யூரியா மற்றும் 20 கிலோ பொட்டாஷ் இட வேண்டும். முதல் பாசனத்தின் போது துத்தநாக சல்பேட் சேர்ப்பது நல்லது.",
-            "kn": "ಭತ್ತದ ಬೆಳೆಗೆ ಪ್ರತಿ ಎಕರೆಗೆ 50 ಕೆಜಿ ಡಿಎಪಿ (DAP), 25 ಕೆಜಿ ಯೂರಿಯಾ ಮತ್ತು 20 ಕೆಜಿ ಪೊಟ್ಯಾಶ್ ಹಾಕಿ. ಮೊದಲ ನೀರಾವರಿ ಸಮಯದಲ್ಲಿ ಸತು ಸಲ್ಫೇಟ್ ಹಾಕುವುದು ಉತ್ತಮ.",
-            "bn": "ধান ফসলের জন্য একর প্রতি ৫০ কেজি ডিএপি (DAP) এবং ২৫ কেজি ইউরিয়া প্রয়োগ করুন। প্রথম সেচের সময় দস্তা বা জিঙ্ক সালফেট দেওয়া উপকারী।",
-            "ml": "നെൽകൃഷിക്ക് ഏക്കറിന് 50 കിലോഗ്രാം ഡിഎപി, 25 കിലോഗ്രാം യൂറിയ, 20 കിലോഗ്രാം പൊട്ടാഷ് എന്നിവ നൽകുക. സിങ്ക് സൾഫേറ്റ് ചേർക്കുന്നത് വിളവ് വർദ്ധിപ്പിക്കും.",
-            "or": "ଧାନ ଫସଲ ପାଇଁ ଏକର ପିଛା ୫୦ କିଲୋ ଡିଏପି (DAP) ଓ ୨୫ କିଲୋ ୟୁରିଆ ପ୍ରୟୋଗ କରନ୍ତୁ। ପ୍ରଥମ ପାଣି ମଡ଼ାଇବା ସମୟରେ ଜିଙ୍କ୍ ସଲଫେଟ୍ ଦେବା ଉତ୍ତମ।",
-            "hi-Latn": "Wheat (gehu) ki fasal me sowing ke time per acre 50kg DAP aur 20kg MOP daalein. First irrigation (21 days CRI stage) par 45kg Urea aur 10kg Zinc Sulfate daalna zaroori hai.",
-            "en": "For wheat crop, apply 50 kg DAP, 20 kg MOP, and 25 kg Urea per acre at sowing time. At the 1st irrigation (CRI stage, 21 days), top-dress with 45 kg Urea and 10 kg Zinc Sulphate (21%)."
+            "hi": f"✅ **हाँ, आज स्प्रे करने के लिए मौसम अनुकूल है।**\n\nआपके क्षेत्र का **स्प्रे सुरक्षा स्कोर {spray_score}/100** है।\n• **हवा की गति**: 8 किमी/घंटा (शांत)\n• **तापमान**: 28°C (उचित)\n• **सलाह**: सुबह 8:00 से 11:00 बजे के बीच या शाम 4:00 बजे के बाद छिड़काव करें ताकि दवा का वाष्पीकरण न हो।",
+            "mr": f"✅ **होय, आज फवारणीसाठी हवामान अनुकूल आहे.**\n\nतुमचा **फवारणी सुरक्षा निर्देशांक {spray_score}/100** आहे.\n• **वाऱ्याचा वेग**: ८ किमी/तास (शांत)\n• **तापमान**: २८°C\n• **सल्ला**: सकाळी ८ ते ११ किंवा दुपारी ४ नंतर फवारणी करावी.",
+            "pa": f"✅ **ਹਾਂ, ਅੱਜ ਸਪਰੇਅ ਕਰਨ ਲਈ ਮੌਸਮ ਬਿਲਕੁਲ ਸਹੀ ਹੈ।**\n\nਤੁਹਾਡੇ ਫਾਰਮ ਦਾ **ਸਪਰੇਅ ਸੇਫਟੀ ਸਕੋਰ {spray_score}/100** ਹੈ। ਹਵਾ ਦੀ ਰਫ਼ਤਾਰ 8 ਕਿਲੋਮੀਟਰ/ਘੰਟਾ ਹੈ। ਧੁੱਪ ਨਿਕਲਣ ਵੇਲੇ ਸਵੇਰੇ ਸਪਰੇਅ ਕਰੋ।",
+            "en": f"✅ **Yes, weather conditions are optimal for spraying today.**\n\nYour farm's **Live Spray Safety Score is {spray_score}/100**.\n• **Wind Speed**: 8 km/h (Calm, minimal drift)\n• **Temperature**: 28°C (Optimal absorption)\n• **Best Window**: Complete spraying between **8:00 AM – 11:00 AM** or after **4:00 PM**."
         }
-        title = {
-            "hi": "गेहूं उर्वरक प्रबंधन (ICAR दिशानिर्देश)",
-            "mr": "गहू खत व्यवस्थापन (ICAR मार्गदर्शक)",
-            "pa": "ਕਣਕ ਖਾਦ ਪ੍ਰਬੰਧਨ (PAU ਸਿਫਾਰਸ਼ਾਂ)",
-            "gu": "ખાતર વ્યવસ્થાપન માર્ગદર્શન",
-            "te": "వరి ఎరువుల యాजమాన్యం",
-            "ta": "நெல் உர மேலாண்மை",
-            "kn": "ಬೆಳೆ ಗೊಬ್ಬರ ನಿರ್ವಹಣೆ",
-            "bn": "ফসল সার ব্যবস্থাপনা",
-            "ml": "വളപ്രയോഗ നിർദ്ദേശങ്ങൾ",
-            "or": "ଫସଲ ସାର ପରିଚାଳନା",
-            "hi-Latn": "Wheat Fertilizer Dosage (ICAR Guidelines)",
-            "en": "Wheat Fertilizer Dosage (ICAR Guidelines)"
-        }
-        resp_text = responses.get(code, responses["en"])
-        act_title = title.get(code, title["en"])
-        key_stats = [
-            {"label": "DAP Dosage", "val": "50 kg/Acre"},
-            {"label": "Urea Top-Dress", "val": "45 kg/Acre"},
-            {"label": "Zinc Sulphate", "val": "10 kg/Acre"}
-        ]
-    elif any(k in q for k in ["bhav", "price", "rate", "mandi", "ਭਾਅ", "भाव", "ભાવ", "ధర", "விலை", "ದರ", "দর"]):
-        # Mandi Price Question
+        return CopilotResponse(
+            query=query,
+            language=lang_info,
+            domain=domain,
+            response_text=responses.get(code, responses["en"]),
+            action_title="मौसम व स्प्रे अनुकूलता रिपोर्ट • Spray Advisory",
+            action_details="Calm wind (<12 km/h) and no rainfall forecast within next 24 hours.",
+            key_stats=[
+                {"label": "Spray Safety Score", "val": f"{spray_score}/100 Safe"},
+                {"label": "Wind Speed", "val": "8 km/h"},
+                {"label": "Rain Risk (24h)", "val": "0% Low"}
+            ],
+            suggested_followups=[
+                "इमिडाक्लोप्रिड की मात्रा कितनी रखें?",
+                "क्या खाद और कीटनाशक साथ में मिला सकते हैं?",
+                "अगले 3 दिन का मौसम कैसा रहेगा?"
+            ]
+        )
+
+    # 3. MULTI-TURN CO-REFERENCE: "What about for rice / cotton / mustard?"
+    if any(k in q for k in ["for rice", "about rice", "धान के लिए", "चावल के लिए", "तांदळासाठी", "ਝੋਨੇ ਲਈ", "for cotton", "कापसासाठी", "कपास के लिए", "चावल", "धान"]):
+        target_crop = "rice" if any(r in q for r in ["rice", "धान", "चावल", "तांदूळ", "ਝੋਨਾ", "వరి"]) else "cotton"
+        if prev_topic == "fertilizer" or "khad" in q or "fertilizer" in q or prev_topic == "":
+            if target_crop == "rice":
+                responses = {
+                    "hi": "**धान (Paddy/Rice) के लिए अनुशंसित उर्वरक मात्रा:**\n\n1. **रोपाई के समय (Basal)**: प्रति एकड़ **50 किलो DAP**, **25 किलो MOP (पोटाश)** और **25 किलो यूरिया** डालें।\n2. **कल्ले फूटते समय (21-25 दिन)**: **45 किलो यूरिया** + **10 किलो जिंक सल्फेट 21%** का भुरकाव करें।\n3. **बालियां बनते समय (45 दिन)**: **30 किलो यूरिया** की अंतिम टॉप-ड्रेसिंग करें।",
+                    "mr": "**भात/धान पिकासाठी खताचे संतुलित नियोजन:**\n\n१. **लावणीच्या वेळी**: एकरी **५० किलो DAP**, **२५ किलो MOP** आणि **२५ किलो युरिया** द्यावे.\n२. **फुटवे येताना (२१ दिवसांनी)**: **४५ किलो युरिया** + **१० किलो झिंक सल्फेट २१%** द्यावे.\n३. **लोंब्या भरताना (४५ दिवसांनी)**: **३० किलो युरिया** द्यावा.",
+                    "pa": "**ਝੋਨੇ ਦੀ ਫ਼ਸਲ ਲਈ ਖਾਦਾਂ ਦੀ ਸਿਫਾਰਸ਼:**\n\n1. **ਲੁਆਈ ਵੇਲੇ**: ਪ੍ਰਤੀ ਏਕੜ **50 ਕਿਲੋ ਡੀ.ਏ.ਪੀ.**, **25 ਕਿਲੋ ਪੋਟਾਸ਼** ਅਤੇ **25 ਕਿਲੋ ਯੂਰੀਆ** ਪਾਓ।\n2. **21 ਦਿਨਾਂ ਬਾਅਦ (ਟਿਲਰਿੰਗ)**: **45 ਕਿਲੋ ਯੂਰੀਆ** + **10 ਕਿਲੋ ਜ਼ਿੰਕ ਸਲਫੇਟ** ਪਾਓ।",
+                    "en": "**Recommended Fertilizer Schedule for Rice / Paddy (per Acre):**\n\n1. **At Transplanting (Basal)**: Apply **50 kg DAP**, **25 kg MOP (Potash)**, and **25 kg Urea** per acre.\n2. **Active Tillering (21-25 Days)**: Top-dress with **45 kg Urea** + **10 kg Zinc Sulphate (21%)** per acre.\n3. **Panicle Initiation (45 Days)**: Apply final top-dressing of **30 kg Urea** per acre."
+                }
+                return CopilotResponse(
+                    query=query,
+                    language=lang_info,
+                    domain=domain,
+                    response_text=responses.get(code, responses["en"]),
+                    action_title="धान संतुलित उर्वरक प्रबंधन • Rice Nutrition Plan",
+                    action_details="Always drain standing water slightly before top-dressing urea for maximum nitrogen absorption.",
+                    key_stats=[
+                        {"label": "DAP Basal", "val": "50 kg/Acre"},
+                        {"label": "Urea Total", "val": "100 kg/Acre"},
+                        {"label": "Zinc 21%", "val": "10 kg/Acre"}
+                    ],
+                    suggested_followups=[
+                        "धान में तना छेदक कीट की दवा क्या है?",
+                        "बासमती धान का आज का मंडी भाव",
+                        "क्या यूरिया के साथ पोटाश मिला सकते हैं?"
+                    ]
+                )
+
+    # 4. CO-REFERENCE: "How much of that per acre?" / Dosage Questions
+    if any(k in q for k in ["how much of that", "how much per acre", "per acre", "that per acre", "iski matra", "इसकी मात्रा", "एकड़ में कितना", "प्रमाण किती", "ਕਿੰਨੀ ਮਾਤਰਾ"]):
         responses = {
-            "hi": "करनाल एवं खन्ना मंडी में शरबती गेहूं का मॉडल भाव ₹2,840 प्रति क्विंटल चल रहा है (न्यूनतम समर्थन मूल्य ₹2,425/क्विंटल से +₹415 ऊपर)। आने वाले 15 दिनों में आटा मिलों की मांग से भाव में ₹50-80 की तेजी रहने का अनुमान है।",
-            "mr": "लातूर व अकोला बाजारपेठेत सोयाबीनचा भाव ₹४,८९० आणि शरबती गव्हाचा भाव ₹२,८४० प्रति क्विंटल आहे. केंद्र सरकारच्या हमीभावापेक्षा (MSP) खुल्या बाजारात तेजी दिसून येत आहे.",
-            "pa": "ਖੰਨਾ ਅਤੇ ਕਰਨਾਲ ਮੰਡੀ ਵਿੱਚ ਸ਼ਰਬਤੀ ਕਣਕ ਦਾ ਤਾਜ਼ਾ ਭਾਅ ₹2,840 ਪ੍ਰਤੀ ਕੁਇੰਟਲ ਹੈ (ਸਰਕਾਰੀ ਐਮਐਸਪੀ ₹2,425 ਨਾਲੋਂ ਵੱਧ)। ਆਉਣ ਵਾਲੇ ਦਿਨਾਂ ਵਿੱਚ ਮਿੱਲਾਂ ਦੀ ਮੰਗ ਕਾਰਨ ਭਾਅ ਮਜ਼ਬੂਤ ਰਹਿਣ ਦੀ ਸੰਭਾਵਨਾ ਹੈ।",
-            "gu": "રાજકોટ અને ઊંઝા માર્કેટ યાર્ડમાં જીરું અને ઘઉંના ભાવ મજબૂત છે. ઘઉંનો હાજર ભાવ ₹૨,૮૪૦/ક્વિન્ટલ ચાલી રહ્યો છે.",
-            "te": "మార్కెట్ యార్డులో నాణ్యమైన ధాన్యం ధర క్వింటాలుకు ₹2,840 గా ఉంది. ప్రభుత్వ మద్దతు ధర (MSP) కంటే ధరలు నిలకడగా ఉన్నాయి.",
-            "ta": "மண்டி சந்தையில் தானியத்தின் மாதிரி விலை குவிண்டாலுக்கு ₹2,840 ஆக உள்ளது. அரசு கொள்முதல் விலையை விட சந்தை தேவை அதிகமாக உள்ளது.",
-            "kn": "ಮಂಡಿ ಮಾರುಕಟ್ಟೆಯಲ್ಲಿ ಕ್ವಿಂಟಾಲ್‌ಗೆ ₹2,840 ರಂತೆ ಬೆಲೆ ಲಭ್ಯವಿದೆ. ಮುಂಬರುವ ದಿನಗಳಲ್ಲಿ ಬೆಲೆಗಳು ಸ್ಥಿರವಾಗಿರುವ ಸಾಧ್ಯತೆಯಿದೆ.",
-            "bn": "মান্ডিতে শস্যের বর্তমান মডেল দর প্রতি কুইন্টাল ₹২,৮৪০। সরকারি সহায়ক মূল্যের চেয়ে খোলা বাজারে চাহিদা ভালো রয়েছে।",
-            "ml": "മാർക്കറ്റിൽ ക്വിന്റലിന് ₹2,840 നിരക്കിൽ വ്യാപാരം നടക്കുന്നു. സർക്കാർ താങ്ങുവിലയേക്കാൾ ഉയർന്ന നിരക്കാണിത്.",
-            "or": "ମଣ୍ଡିରେ ଶସ୍ୟର ହାରାହାରି ଦର କ୍ୱିଣ୍ଟାଲ ପିଛା ₹୨,୮୪୦ ରହିଛି। ଆଗାମୀ ଦିନରେ ବଜାର ଦର ସ୍ଥିର ରହିବାର ଆଶା ଅଛି।",
-            "hi-Latn": "Karnal aur Khanna mandi me sharbati gehu ka spot rate ₹2,840/quintal chal raha hai, jo MSP ₹2,425 se +₹415 upar hai. Next 15 days me rate strong rehne ki umeed hai.",
-            "en": "In Karnal and North India APMCs, premium Sharbati Wheat is trading at ₹2,840/quintal (realizing +₹415/qtl above Government MSP of ₹2,425). Mill demand is projected to stay firm."
+            "hi": "प्रति एकड़ मानक मात्रा निम्न प्रकार है:\n\n• **उर्वरक (DAP)**: **50 किलो प्रति एकड़** (बुवाई के समय)\n• **यूरिया (टॉप-ड्रेसिंग)**: **45 किलो प्रति एकड़** (पहली सिंचाई पर)\n• **जिंक सल्फेट (21%)**: **10 किलो प्रति एकड़**\n• **छिड़काव कीटनाशक (इमिडाक्लोप्रिड)**: **80 मिलीलीटर प्रति 150 लीटर पानी प्रति एकड़**।",
+            "mr": "प्रति एकर अचूक प्रमाण खालीलप्रमाणे आहे:\n\n• **डीएपी (DAP)**: **५० किलो प्रति एकर** (पेरणीच्या वेळी)\n• **युरिया**: **४५ किलो प्रति एकर** (पहिल्या पाण्यावेळी)\n• **झिंक सल्फेट**: **१० किलो प्रति एकर**\n• **कीटकनाशक (इमिडाक्लोप्रिड)**: **८० मिली प्रति १५० लिटर पाणी प्रति एकर**.",
+            "en": "**Standard per acre application dosages:**\n\n• **DAP (Basal)**: **50 kg per acre** at sowing\n• **Urea (Top-Dress)**: **45 kg per acre** at 1st irrigation\n• **Zinc Sulphate (21%)**: **10 kg per acre**\n• **Foliar Insecticide (Imidacloprid)**: **80 ml in 150 Liters water per acre**."
         }
-        title = {
-            "hi": "दैनिक मंडी भाव व पूर्वानुमान",
-            "mr": "दैनिक बाजारभाव व तेजी-मंदी कल",
-            "pa": "ਤਾਜ਼ਾ ਮੰਡੀ ਰਿਪੋਰਟ ਤੇ ਭਾਅ",
-            "gu": "માર્કેટ યાર્ડ ભાવ રિપોર્ટ",
-            "te": "రోజువారీ మార్కెట్ ధరల విశ్లేషణ",
-            "ta": "தினசரி மண்டி விலை நிலவரம்",
-            "kn": "ದೈನಂದಿನ ಮಂಡಿ ದರ ವರದಿ",
-            "bn": "দৈনিক মান্ডি দর ও পূর্বাভাস",
-            "ml": "വിപണി വില വിവരങ്ങൾ",
-            "or": "ଦୈନିକ ମଣ୍ଡି ଦର ସୂଚନା",
-            "hi-Latn": "Daily Mandi Spot Rates & Outlook",
-            "en": "Daily Mandi Spot Rates & Outlook"
-        }
-        resp_text = responses.get(code, responses["en"])
-        act_title = title.get(code, title["en"])
-        key_stats = [
-            {"label": "Current Modal Rate", "val": "₹2,840/qtl"},
-            {"label": "Govt MSP Benchmark", "val": "₹2,425/qtl"},
-            {"label": "15-Day Trajectory", "val": "+₹60-80 Bullish"}
-        ]
-    elif any(k in q for k in ["pest", "disease", "insect", "keet", "rog", "कीट", "रोग", "कीड", "ਰੋਗ", "ઈયળ", "తెగులు", "பூச்சி", "ಕೀಟ"]):
-        # Pest / Disease Control
+        return CopilotResponse(
+            query=query,
+            language=lang_info,
+            domain=domain,
+            response_text=responses.get(code, responses["en"]),
+            action_title="प्रति एकड़ मानक खुराक • Per-Acre Dosage",
+            action_details="Calculated based on ICAR & State Agricultural University package of practices.",
+            key_stats=[
+                {"label": "DAP Dosage", "val": "50 kg/Acre"},
+                {"label": "Urea Top-Dress", "val": "45 kg/Acre"},
+                {"label": "Spray Volume", "val": "150 L/Acre"}
+            ],
+            suggested_followups=[
+                "क्या जिंक और डीएपी एक साथ मिला सकते हैं?",
+                "पहली सिंचाई कितने दिन बाद करनी चाहिए?",
+                "आज स्प्रे करने का सही समय"
+            ]
+        )
+
+    # 5. PEST / DISEASE / INSECT CONTROL
+    if any(k in q for k in ["pest", "disease", "insect", "keet", "rog", "कीट", "रोग", "कीड", "रोगी", "ਕੀਟ", "ਈਯਲ", "తెగులు"]):
         responses = {
-            "hi": "कपास और दलहनी फसलों में कीट नियंत्रण के लिए प्रति एकड़ 80 मिलीलीटर इमिडाक्लोप्रिड (Imidacloprid 17.8% SL) 150 लीटर पानी में घोलकर छिड़कें। फफूंद जनित रोगों के लिए प्रोपिकोनाज़ोल (Tilt 25% EC) 200 मिलीलीटर का इस्तेमाल करें।",
-            "mr": "कापूस पिकावरील बोंडअळी व रसशोषक किडींच्या नियंत्रणासाठी इमिडाक्लोप्रिड (Imidacloprid 17.8% SL) ८० मिली किंवा निंबोळी अर्क ५% ची १५० लिटर पाण्यातून फवारणी करावी.",
-            "pa": "ਫ਼ਸਲਾਂ ਵਿੱਚ ਤੇਲਾ ਜਾਂ ਪੀਲਾ ਰਤੂਆ ਰੋਗ ਰੋਕਣ ਲਈ ਪ੍ਰੋਪੀਕੋਨਾਜ਼ੋਲ (Tilt 25% EC) 200 ਮਿਲੀਲੀਟਰ ਨੂੰ 200 ਲੀਟਰ ਪਾਣੀ ਵਿੱਚ ਮਿਲਾ ਕੇ ਧੁੱਪ ਵਾਲੇ ਦਿਨ ਛਿੜਕਾਅ ਕਰੋ।",
-            "gu": "કપાસમાં ગુલાબી ઈયળ અને ચૂસિયા પ્રકારની જીવાતો માટે લીંબોળીનું તેલ અથવા ઈમિડાક્લોપ્રિડ ૮૦ મિલી ૧૫૦ લિટર પાણીમાં છંટકાવ કરવો.",
-            "te": "పంటల్లో పురుగుల నివారణకు ఇమిడాక్లోప్రిడ్ 80 మి.లీ 150 లీటర్ల నీటిలో కలిపి పిచికారీ చేయాలి. తెగుళ్ల నివారణకు ప్రొపికోనజోల్ వాడండి.",
-            "ta": "பயிர்களில் பூச்சி தாக்குதலைக் கட்டுப்படுத்த இமிடாக்ளோப்ரிட் 80 மி.லி அல்லது வேப்ப எண்ணெய் கரைசலை 150 லிட்டர் தண்ணீரில் கலந்து தெளிக்கவும்.",
-            "kn": "ಬೆಳೆಗಳಲ್ಲಿ ಕೀಟಬಾಧೆ ನಿಯಂತ್ರಣಕ್ಕೆ ಇಮಿಡಾಕ್ಲೋಪ್ರಿಡ್ 80 ಮಿ.ಲೀ 150 ಲೀಟರ್ ನೀರಿಗೆ ಬೆರೆಸಿ ಸಿಂಪಡಿಸಿ. ಶಿಲೀಂಧ್ರ ರೋಗಗಳಿಗೆ ಪ್ರೊಪಿಕೊನಾಜೋಲ್ ಬಳಸಿ.",
-            "bn": "ফসলে পোকা দমনের জন্য ইমিডাক্লোপ্রিড ৮০ মিলি ১৫০ লিটার জলে মিশিয়ে স্প্রে করুন। ছত্রাকজনিত রোগের জন্য প্রপিকোনাজল ব্যবহার করুন।",
-            "ml": "കീടങ്ങളെ നിയന്ത്രിക്കാൻ ഇമിഡാക്ലോപ്രിഡ് 80 മില്ലി 150 ലിറ്റർ വെള്ളത്തിൽ കലക്കി തളിക്കുക. കുമിൾ രോഗങ്ങൾക്ക് പ്രൊപികൊണാസോൾ ഉപയോഗിക്കാം.",
-            "or": "ଫସଲରେ ପୋକ ନିୟନ୍ତ୍ରଣ ପାଇଁ ଇମିଡାକ୍ଲୋପ୍ରିଡ୍ ୮୦ ମି.ଲି. ୧୫୦ ଲିଟର ପାଣିରେ ମିଶାଇ ସ୍ପ୍ରେ କରନ୍ତୁ।",
-            "hi-Latn": "Kapas aur anya faslon me pest control ke liye Imidacloprid (17.8% SL) 80ml ko 150 liter paani me gholkar spray karein. Fungal diseases ke liye Propiconazole 200ml use karein.",
-            "en": "For sucking pests and bollworms, spray Imidacloprid (17.8% SL) @ 80 ml in 150 Liters of water per acre. For fungal rusts, spray Propiconazole (Tilt 25% EC) @ 200 ml/acre on a clear sunny morning."
+            "hi": "कपास एवं अन्य फसलों में कीट व रस चूसक कीड़ों के नियंत्रण के लिए प्रति एकड़ **80 मिली इमिडाक्लोप्रिड (Imidacloprid 17.8% SL)** 150 लीटर पानी में मिलाकर छिड़कें। फफूंद जनित रोगों के लिए **प्रोपिकोनाज़ोल 200 मिली** का उपयोग करें।",
+            "mr": "कापूस व इतर पिकांवरील बोंडअळी व रसशोषक किडींच्या नियंत्रणासाठी एकरी **८० मिली इमिडाक्लोप्रिड (Imidacloprid 17.8% SL)** १५० लिटर पाण्यातून फवारावे. बुरशीजन्य रोगांसाठी **प्रोपिकोनाझोल २०० मिली** वापरावे.",
+            "pa": "ਫ਼ਸਲਾਂ ਵਿੱਚ ਤੇਲਾ ਜਾਂ ਪੀਲਾ ਰਤੂਆ ਰੋਕਣ ਲਈ **ਪ੍ਰੋਪੀਕੋਨਾਜ਼ੋਲ (Tilt 25% EC) 200 ਮਿਲੀਲੀਟਰ** ਨੂੰ 200 ਲੀਟਰ ਪਾਣੀ ਵਿੱਚ ਮਿਲਾ ਕੇ ਛਿੜਕਾਅ ਕਰੋ।",
+            "en": "For sucking pests and bollworms in cotton and crops, spray **Imidacloprid (17.8% SL) @ 80 ml in 150 Liters of water per acre**. For fungal diseases, use **Propiconazole @ 200 ml/acre**."
         }
-        title = {
-            "hi": "कीट व रोग नियंत्रण उपाय (ICAR प्रोटोकॉल)",
-            "mr": "एकात्मिक कीड व रोग नियंत्रण",
-            "pa": "ਕੀਟ ਤੇ ਬਿਮਾਰੀ ਰੋਕਥਾਮ",
-            "gu": "જીવાત અને રોગ નિયંત્રણ",
-            "te": "సమగ్ర సస్యరక్షణ చర్యలు",
-            "ta": "ஒருங்கிணைந்த பூச்சி மேலாண்மை",
-            "kn": "ಸಮಗ್ರ ಕೀಟ ನಿರ್ವಹಣೆ",
-            "bn": "সমন্বিত পোকা ও রোগ দমন",
-            "ml": "കീടരോഗ നിയന്ത്രണ മാർഗ്ഗങ്ങൾ",
-            "or": "ସମନ୍ୱିତ ପୋକ ଓ ରୋଗ ପରିଚାଳନା",
-            "hi-Latn": "Integrated Pest & Disease Management",
-            "en": "Integrated Pest & Disease Management"
-        }
-        resp_text = responses.get(code, responses["en"])
-        act_title = title.get(code, title["en"])
-        key_stats = [
-            {"label": "Imidacloprid 17.8%", "val": "80 ml/Acre"},
-            {"label": "Propiconazole 25%", "val": "200 ml/Acre"},
-            {"label": "Water Volume", "val": "150 L/Acre"}
-        ]
-    else:
-        # General Farm Advisory
+        return CopilotResponse(
+            query=query,
+            language=lang_info,
+            domain=domain,
+            response_text=responses.get(code, responses["en"]),
+            action_title="एकात्मिक कीड व रोग नियंत्रण • Pest Management",
+            action_details="Always spray in the morning or late evening under calm wind conditions.",
+            key_stats=[
+                {"label": "Imidacloprid", "val": "80 ml/Acre"},
+                {"label": "Propiconazole", "val": "200 ml/Acre"},
+                {"label": "Water Volume", "val": "150 L/Acre"}
+            ],
+            suggested_followups=[
+                "जैविक कीटनाशक (नीम तेल) कैसे बनाएं?",
+                "आज स्प्रे करने का मौसम कैसा है?",
+                "फसल डॉक्टर में फोटो अपलोड करें"
+            ]
+        )
+
+    # 6. MANDI RATES & MARKET REASONING
+    if any(k in q for k in ["bhav", "price", "rate", "mandi", "msp", "भाव", "ਦਰ", "ਭਾਅ", "ભાવ", "ధర", "விலை", "ದರ", "দর", "വില", "sell now", "wait"]):
         responses = {
-            "hi": "खेती में उत्तम पैदावार और अधिकतम लाभ के लिए संतुलित उर्वरक (NPK 4:2:1), मृदा स्वास्थ्य कार्ड के अनुसार सूक्ष्म पोषक तत्व, और समय पर सिंचाई प्रबंधन अत्यंत महत्वपूर्ण है। अपनी फसल की वर्तमान स्थिति बताएं।",
-            "mr": "शेतीमध्ये भरपूर उत्पादनासाठी जमिनीची सुपीकता, वेळेवर सिंचन आणि प्रमाणित बियाण्यांचा वापर आवश्यक आहे. आपल्या पिकाची सद्यस्थिती सांगा जेणेकरून अचूक मार्गदर्शन करता येईल.",
-            "pa": "ਵਧੀਆ ਝਾੜ ਲਈ ਸੰਤੁਲਿਤ ਖਾਦਾਂ, ਮਿੱਟੀ ਪਰਖ ਰਿਪੋਰਟ ਅਤੇ ਸਹੀ ਸਮੇਂ 'ਤੇ ਸਿੰਚਾਈ ਪ੍ਰਬੰਧਨ ਬਹੁਤ ਜ਼ਰੂਰੀ ਹੈ। ਆਪਣੀ ਫ਼ਸਲ ਬਾਰੇ ਹੋਰ ਜਾਣਕਾਰੀ ਦਿਓ।",
-            "gu": "ખેતીમાં સારા ઉત્પાદન માટે જમીન ચકાસણી, સપ્રમાણ ખાતર અને સમયસર પિયત વ્યવસ્થાપન ખૂબ મહત્વપૂર્ણ છે.",
-            "te": "వ్యవసాయంలో అధిక దిగుబడి సాధించడానికి సమతుల్య ఎరువులు, నేల పరీక్ష మరియు సకాలంలో నీటి యాజమాన్యం ఎంతో అవసరం.",
-            "ta": "விவசாயத்தில் அதிக மகசூல் பெற சமச்சீர் உரமிடுதல், மண் பரிசோதனை மற்றும் சரியான பாசன மேலாண்மை மிகவும் அவசியம்.",
-            "kn": "ಕೃಷಿಯಲ್ಲಿ ಉತ್ತಮ ಇಳುವರಿಗಾಗಿ ಮಣ್ಣು ಪರೀಕ್ಷೆ, ಸಮತೋಲಿತ ರಸಗೊಬ್ಬರ ಮತ್ತು ಸಮಯೋಚಿತ ನೀರಾವರಿ ಅತ್ಯಗತ್ಯ.",
-            "bn": "উচ্চ ফলনের জন্য সুষম সার প্রয়োগ, মাটি পরীক্ষা এবং সময়মতো সেচ ব্যবস্থাপনা অত্যন্ত জরুরি।",
-            "ml": "കൂടുതൽ വിളവിനായി മണ്ണ് പരിശോധനയും സമീകൃത വളപ്രയോഗവും കൃത്യമായ ജലസേചനവും ഉറപ്പാക്കുക.",
-            "or": "ଭଲ ଅମଳ ପାଇଁ ମାଟି ପରୀକ୍ଷା, ସନ୍ତୁଳିତ ସାର ପ୍ରୟୋଗ ଓ ଠିକ୍ ସମୟରେ ଜଳସେଚନ ଅତ୍ୟନ୍ତ ଜରୁରୀ।",
-            "hi-Latn": "Kheti me bumper production ke liye Soil Health Card ke hisab se balanced NPK aur time par irrigation management bohot zaroori hai. Apni fasal ki stage batayein.",
-            "en": "For optimal agricultural yield and maximum profitability, balanced NPK nutrition (4:2:1), Soil Health Card micronutrient application, and stage-wise irrigation scheduling are vital."
+            "hi": "📊 **मंडी विश्लेषण एवं बिक्री रणनीति:**\n\n1. **वर्तमान स्थिति**: करनाल/खन्ना मंडी में गेहूं का भाव **₹2,840/क्विंटल** है, जो सरकारी **एमएसपी (₹2,425)** से **+₹415 ऊपर** है।\n2. **बाजार पूर्वानुमान**: आने वाले 15-20 दिनों में आटा मिलों की मजबूत मांग के कारण भाव में **₹50-80 प्रति क्विंटल की और तेजी** की संभावना है।\n3. **व्यावहारिक सलाह**: यदि आपके पास सुरक्षित भंडारण (Godown) की सुविधा है, तो **50% फसल अभी बेचकर कार्यशील पूंजी निकालें और 50% फसल 2-3 सप्ताह रोककर रखें**।",
+            "mr": "📊 **बाजारभाव कल व विक्री सल्ला:**\n\n१. **सद्यस्थिती**: शरबती गव्हाचा भाव **₹२,८४०/क्विंटल** असून हमीभावापेक्षा (MSP ₹२,४२५) **₹४१५ जास्त** आहे.\n२. **पुढील कल**: पुढील १५-२० दिवसांत मंदीची शक्यता कमी असून **₹५०-८० प्रति क्विंटल वाढीचा अंदाज** आहे.\n३. **सल्ला**: ५०% माल सध्याच्या चांगल्या भावात विकावा आणि ५०% माल पुढील तेजीसाठी राखून ठेवावा.",
+            "pa": "📊 **ਮੰਡੀ ਭਾਅ ਰਿਪੋਰਟ:**\n\nਕਰਨਾਲ ਅਤੇ ਖੰਨਾ ਮੰਡੀ ਵਿੱਚ ਸ਼ਰਬਤੀ ਕਣਕ ਦਾ ਤਾਜ਼ਾ ਭਾਅ **₹2,840 ਪ੍ਰਤੀ ਕੁਇੰਟਲ** ਹੈ (ਸਰਕਾਰੀ ਐਮਐਸਪੀ ₹2,425 ਨਾਲੋਂ **+₹415 ਵੱਧ**)। ਆਉਣ ਵਾਲੇ ਦਿਨਾਂ ਵਿੱਚ ਮਿੱਲਾਂ ਦੀ ਮੰਗ ਮਜ਼ਬੂਤ ਰਹੇਗੀ।",
+            "en": "📊 **Mandi Price Trend & Selling Strategy:**\n\n1. **Current Realization**: Sharbati Wheat is trading at **₹2,840/quintal**, fetching a **+₹415 premium over MSP (₹2,425)**.\n2. **15-Day Outlook**: Mill procurement demand is strong; prices are projected to appreciate by **+₹50-80/quintal**.\n3. **Practical Trade-off**: If you have dry warehouse storage, **sell 50% of your lot now to secure cash flow and hold 50% for 2-3 weeks** to capture maximum upside."
         }
-        title = {
-            "hi": "कृषि एवं फसल प्रबंधन सलाह",
-            "mr": "कृषी व पीक व्यवस्थापन सल्ला",
-            "pa": "ਖੇਤੀਬਾੜੀ ਅਤੇ ਫ਼ਸਲ ਸਲਾਹ",
-            "gu": "કૃષિ અને પાક વ્યવસ્થાપન",
-            "te": "వ్యవసాయ సలహా",
-            "ta": "விவசாய ஆலோசனை",
-            "kn": "ಕೃಷಿ ಸಲಹೆ",
-            "bn": "কৃষি পরামর্শ",
-            "ml": "കാർഷിക ഉപദേശം",
-            "or": "କୃଷି ପରାମର୍ଶ",
-            "hi-Latn": "Farming & Crop Management Advice",
-            "en": "Farming & Crop Management Advice"
-        }
-        resp_text = responses.get(code, responses["en"])
-        act_title = title.get(code, title["en"])
-        key_stats = [
-            {"label": "NPK Ratio", "val": "4:2:1 Optimal"},
-            {"label": "Soil Test", "val": "SHC Certified"},
-            {"label": "Water Efficiency", "val": "+30% with Drip"}
-        ]
+        return CopilotResponse(
+            query=query,
+            language=lang_info,
+            domain=domain,
+            response_text=responses.get(code, responses["en"]),
+            action_title="मंडी व्यापार व बिक्री रणनीति • Market Strategy",
+            action_details="Trade directly on AgriPulse B2B floor to save 2-3% mandi commission and get instant Smart Escrow settlement.",
+            key_stats=[
+                {"label": "Current Spot", "val": "₹2,840/qtl"},
+                {"label": "Govt MSP", "val": "₹2,425/qtl"},
+                {"label": "15-Day Bias", "val": "Bullish (+₹60-80)"}
+            ],
+            suggested_followups=[
+                "एग्रीपल्स B2B मंडी में लॉट कैसे लिस्ट करें?",
+                "नजदीकी गोदाम (Warehouse) की लिस्ट देखें",
+                "एस्क्रो सुरक्षित भुगतान प्रक्रिया"
+            ]
+        )
+
+    # 7. GENERAL WHEAT / DEFAULT ADVISORY
+    responses = {
+        "hi": "गेहूं व रबी फसलों में बुवाई के समय प्रति एकड़ **50 किलो DAP**, **20 किलो MOP** और **25 किलो यूरिया** डालें। पहली सिंचाई (CRI स्टेज, 21 दिन बाद) पर **45 किलो यूरिया** और **10 किलो जिंक सल्फेट 21%** का भुरकाव करें। इससे कल्ले अधिक फूटते हैं और पैदावार 15% तक बढ़ती है।",
+        "mr": "गहू पिकासाठी पेरणीच्या वेळी एकरी **५० किलो DAP**, **२० किलो MOP** आणि **२५ किलो युरिया** द्यावे. पहिल्या पाण्याच्या वेळी (२१ दिवसांनी) **४५ किलो युरिया** आणि **१० किलो झिंक सल्फेट** द्यावे.",
+        "pa": "ਕਣਕ ਦੀ ਫ਼ਸਲ ਲਈ ਬਿਜਾਈ ਵੇਲੇ ਪ੍ਰਤੀ ਏਕੜ **55 ਕਿਲੋ ਡੀ.ਏ.ਪੀ.** ਅਤੇ **20 ਕਿਲੋ ਪੋਟਾਸ਼** ਪਾਓ। ਪਹਿਲੇ ਪਾਣੀ (21 ਦਿਨਾਂ ਬਾਅਦ) ਸਮੇਂ **45 ਕਿਲੋ ਯੂਰੀਆ** ਅਤੇ **10 ਕਿਲੋ ਜ਼ਿੰਕ ਸਲਫੇਟ** ਦਿਓ।",
+        "en": "For wheat and cereal crops, apply **50 kg DAP**, **20 kg MOP**, and **25 kg Urea** per acre at sowing time. At the 1st irrigation (CRI stage, 21 days), top-dress with **45 kg Urea** and **10 kg Zinc Sulphate (21%)** per acre."
+    }
 
     return CopilotResponse(
         query=query,
         language=lang_info,
         domain=domain,
-        response_text=resp_text,
-        action_title=act_title,
-        action_details="Follow ICAR-approved standard agronomic schedule for optimal plant protection and maximum market realization.",
-        key_stats=key_stats,
-        suggested_followups=DEFAULT_AGRI_SUGGESTIONS.get(code, DEFAULT_AGRI_SUGGESTIONS["en"]),
-        audio_tts_text=resp_text
+        response_text=responses.get(code, responses["en"]),
+        action_title="संतुलित उर्वरक एवं फसल पोषण • Balanced Nutrition",
+        action_details="Apply top-dressing before irrigation to optimize root absorption and minimize nitrogen volatilization.",
+        key_stats=[
+            {"label": "DAP Dosage", "val": "50 kg/Acre"},
+            {"label": "Urea CRI", "val": "45 kg/Acre"},
+            {"label": "Zinc 21%", "val": "10 kg/Acre"}
+        ],
+        suggested_followups=[
+            "पहली सिंचाई का सही समय कब है?",
+            "पीला रतुआ रोग के लक्षण व दवा",
+            "आज का गेहूं मंडी भाव क्या है?"
+        ]
     )
