@@ -96,7 +96,7 @@ export default function WeatherPage() {
             {t('weather.subtitle')}
           </p>
         </div>
-        <span className="text-xs font-bold text-[#78716c]">Karnal District • Updated 10m ago</span>
+        <span className="text-xs font-bold text-[#78716c]">Karnal District • Live</span>
       </div>
 
       {/* Spraying Safety Index Banner */}
@@ -109,25 +109,25 @@ export default function WeatherPage() {
             </h3>
             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#f5fdf7] text-[#14532d] border border-[#bbf7d0]">
               <span className="w-1.5 h-1.5 rounded-full bg-[#14532d] animate-pulse"></span>
-              Live Safety Index
+              {t('weather.liveSafetyIndex')}
             </span>
           </div>
           <p className="text-xs text-[#57534e] mb-3">
-            Optimal chemical adherence window: <strong className="text-[#1c1917]">06:00 AM — 09:30 AM</strong> (Low wind speed &lt; 9 km/h, no dew condensation).
+            {t('weather.optimalWindowDesc')}
           </p>
 
           <div className="flex flex-wrap gap-2 text-xs font-bold">
             <div className="bg-[#faf8f5] px-2.5 py-1.5 rounded-xl border border-[#e7e5e4] flex items-center gap-1.5 text-[#1c1917]">
               <span className="material-symbols-outlined text-[16px] text-[#14532d]">air</span>
-              Wind Drift: <span className="text-[#14532d]">8 km/h (Safe)</span>
+              {t('weather.windDrift')}: <span className="text-[#14532d]">8 km/h (Safe)</span>
             </div>
             <div className="bg-[#faf8f5] px-2.5 py-1.5 rounded-xl border border-[#e7e5e4] flex items-center gap-1.5 text-[#1c1917]">
               <span className="material-symbols-outlined text-[16px] text-blue-700">thermostat</span>
-              Temperature: <span className="text-[#1c1917]">28°C (Optimal)</span>
+              {t('weather.temperature')}: <span className="text-[#1c1917]">28°C</span>
             </div>
             <div className="bg-[#faf8f5] px-2.5 py-1.5 rounded-xl border border-[#e7e5e4] flex items-center gap-1.5 text-[#1c1917]">
               <span className="material-symbols-outlined text-[16px] text-[#b45309]">water_drop</span>
-              Humidity: <span className="text-[#1c1917]">54% (No wash-off)</span>
+              {t('weather.humidity')}: <span className="text-[#1c1917]">54%</span>
             </div>
           </div>
         </div>
@@ -135,8 +135,8 @@ export default function WeatherPage() {
         <div className="shrink-0 flex items-center gap-3 bg-[#f5fdf7] px-4 py-3 rounded-2xl border border-[#bbf7d0] w-full lg:w-auto">
           <span className="material-symbols-outlined text-[#14532d] text-[28px]">check_circle</span>
           <div>
-            <span className="text-[9px] font-extrabold text-[#14532d] uppercase tracking-wider block">Window Status</span>
-            <span className="text-sm font-extrabold text-[#052e16]">RECOMMENDED TO SPRAY</span>
+            <span className="text-[9px] font-extrabold text-[#14532d] uppercase tracking-wider block">{t('weather.windowStatus')}</span>
+            <span className="text-sm font-extrabold text-[#052e16]">{t('weather.recommendedToSpray')}</span>
           </div>
         </div>
       </div>
@@ -177,71 +177,72 @@ export default function WeatherPage() {
         <div className="lg:col-span-7 paper-card p-4 sm:p-5">
           <div className="flex justify-between items-center mb-3 pb-2.5 border-b border-[#f5f2eb]">
             <div>
-              <h3 className="text-sm font-extrabold text-[#1c1917] font-editorial">Agronomic Risk Matrix</h3>
-              <span className="text-[10px] text-[#78716c]">6-factor stress analysis for {currentDay.day} ({currentDay.date})</span>
+              <h3 className="text-sm font-extrabold text-[#1c1917] font-editorial">{t('weather.riskMatrix')}</h3>
+              <p className="text-[11px] text-[#78716c]">6-factor stress analysis for {currentDay.day} ({currentDay.date})</p>
             </div>
-            <span className="text-[10px] font-extrabold text-[#14532d] bg-[#f5fdf7] border border-[#bbf7d0] px-2.5 py-0.5 rounded-full">
+            <span className="text-xs font-extrabold text-[#14532d] bg-[#f5fdf7] px-2.5 py-1 rounded-full border border-[#bbf7d0]">
               {currentDay.safety}
             </span>
           </div>
 
-          <div className="h-60 sm:h-72 w-full">
+          <div className="h-[260px] sm:h-[300px] w-full flex items-center justify-center">
             <Radar data={radarData} options={radarOptions} />
           </div>
         </div>
 
-        {/* Sub-Surface Soil Telemetry */}
-        <div className="lg:col-span-5 space-y-3 sm:space-y-4">
-          <div className="paper-card p-4 sm:p-5">
-            <h3 className="text-sm font-extrabold text-[#1c1917] font-editorial mb-3 flex items-center gap-1.5">
-              <span className="material-symbols-outlined text-blue-700 text-[18px]">sensors</span>
-              Sub-Surface Soil Moisture Telemetry
-            </h3>
+        {/* Sub-surface Soil Moisture Sensors */}
+        <div className="lg:col-span-5 flex flex-col justify-between gap-4">
+          <div className="paper-card p-4 sm:p-5 flex-1">
+            <div className="flex items-center gap-2 mb-3 pb-2.5 border-b border-[#f5f2eb]">
+              <span className="material-symbols-outlined text-[#14532d] text-[20px]">sensors</span>
+              <h3 className="text-sm font-extrabold text-[#1c1917] font-editorial">
+                {t('weather.soilMoistureTelemetry')}
+              </h3>
+            </div>
 
-            <div className="space-y-3 text-xs">
-              {/* Sensor 1 */}
+            <div className="space-y-4 text-xs">
               <div>
-                <div className="flex justify-between font-bold mb-1">
-                  <span className="text-[#44403c]">Topsoil (5 cm Depth)</span>
-                  <span className="text-[#14532d] font-extrabold">26.4% Moisture (Normal)</span>
+                <div className="flex justify-between font-bold text-[#1c1917] mb-1">
+                  <span>{t('weather.topsoil')}</span>
+                  <span className="text-[#14532d]">26.4% Moisture (Normal)</span>
                 </div>
-                <div className="w-full bg-[#f5f2eb] h-2 rounded-full overflow-hidden">
-                  <div className="bg-[#14532d] h-full rounded-full" style={{ width: '58%' }}></div>
+                <div className="w-full bg-[#f5f2eb] h-2.5 rounded-full overflow-hidden">
+                  <div className="bg-[#14532d] h-full rounded-full" style={{ width: '55%' }}></div>
                 </div>
               </div>
 
-              {/* Sensor 2 */}
               <div>
-                <div className="flex justify-between font-bold mb-1">
-                  <span className="text-[#44403c]">Active Root Zone (15 cm Depth)</span>
-                  <span className="text-[#14532d] font-extrabold">34.8% Moisture (Optimal)</span>
+                <div className="flex justify-between font-bold text-[#1c1917] mb-1">
+                  <span>{t('weather.rootZone')}</span>
+                  <span className="text-emerald-700">34.8% Moisture (Optimal)</span>
                 </div>
-                <div className="w-full bg-[#f5f2eb] h-2 rounded-full overflow-hidden">
-                  <div className="bg-[#14532d] h-full rounded-full" style={{ width: '74%' }}></div>
+                <div className="w-full bg-[#f5f2eb] h-2.5 rounded-full overflow-hidden">
+                  <div className="bg-emerald-600 h-full rounded-full" style={{ width: '75%' }}></div>
                 </div>
               </div>
 
-              {/* Sensor 3 */}
               <div>
-                <div className="flex justify-between font-bold mb-1">
-                  <span className="text-[#44403c]">Deep Subsoil (30 cm Depth)</span>
-                  <span className="text-blue-700 font-extrabold">42.1% Moisture (Saturated)</span>
+                <div className="flex justify-between font-bold text-[#1c1917] mb-1">
+                  <span>{t('weather.deepSubsoil')}</span>
+                  <span className="text-blue-700">42.1% Moisture (Saturated)</span>
                 </div>
-                <div className="w-full bg-[#f5f2eb] h-2 rounded-full overflow-hidden">
-                  <div className="bg-blue-600 h-full rounded-full" style={{ width: '85%' }}></div>
+                <div className="w-full bg-[#f5f2eb] h-2.5 rounded-full overflow-hidden">
+                  <div className="bg-blue-600 h-full rounded-full" style={{ width: '90%' }}></div>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Quick Advisory */}
-          <div className="paper-card p-4 bg-[#fffbeb] border-l-4 border-l-[#b45309] text-xs">
-            <div className="flex items-center gap-1.5 font-extrabold text-[#92400e] mb-1 font-editorial text-sm">
-              <span className="material-symbols-outlined text-[18px]">lightbulb</span>
-              Irrigation Automation Advisory
+          {/* Predictive Smart Irrigation Advice */}
+          <div className="paper-card p-4 bg-[#faf8f5] border-l-4 border-l-[#b45309]">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="material-symbols-outlined text-[#b45309] text-[20px]">lightbulb</span>
+              <h4 className="text-xs font-extrabold text-[#1c1917] uppercase tracking-wider">
+                {t('weather.irrigationAdvisoryTitle')}
+              </h4>
             </div>
-            <p className="text-[#78350f] leading-relaxed text-[11px] font-medium">
-              With root zone moisture at 34.8% and rain probability rising to 75% on Thursday, defer scheduled canal irrigation to conserve electricity and avoid waterlogging.
+            <p className="text-xs text-[#57534e] leading-relaxed">
+              {t('weather.irrigationAdvisoryBody')}
             </p>
           </div>
         </div>

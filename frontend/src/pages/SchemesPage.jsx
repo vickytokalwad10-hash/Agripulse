@@ -218,7 +218,7 @@ export default function SchemesPage() {
           {t('schemes.title')}
         </h2>
         <p className="text-xs sm:text-sm text-slate-500 max-w-3xl mt-1">
-          Direct DBT installment tracker, PMFBY crop insurance claim filing, official Soil Health Card analysis, and verified state subsidy alerts.
+          {t('schemes.subtitle')}
         </p>
       </div>
 
@@ -252,7 +252,7 @@ export default function SchemesPage() {
           <div className="glass-card p-5">
             <h3 className="text-sm font-extrabold text-slate-900 mb-3 flex items-center gap-2">
               <span className="material-symbols-outlined text-brand-600 text-[20px]">search</span>
-              Lookup PM-KISAN Samman Nidhi Status
+              {t('schemes.lookupTitle')}
             </h3>
             <div className="flex gap-2">
               <input
@@ -267,7 +267,7 @@ export default function SchemesPage() {
                 disabled={kisanLoading}
                 className="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-xl shadow-xs transition active:scale-95"
               >
-                {kisanLoading ? 'Fetching...' : 'Check Status'}
+                {kisanLoading ? '...' : t('schemes.checkStatus')}
               </button>
             </div>
           </div>
@@ -278,12 +278,12 @@ export default function SchemesPage() {
               <div className="hero-gradient-card p-6">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                   <div>
-                    <span className="text-[11px] font-bold text-brand-200 uppercase tracking-wider block">Beneficiary Farmer</span>
+                    <span className="text-[11px] font-bold text-brand-200 uppercase tracking-wider block">{t('schemes.beneficiaryFarmer')}</span>
                     <h4 className="text-2xl font-extrabold text-white">{kisanData.name}</h4>
                     <p className="text-xs text-brand-100 mt-0.5">📍 {kisanData.village}, {kisanData.district} ({kisanData.state})</p>
                   </div>
                   <div className="text-right">
-                    <span className="text-[10px] font-bold text-brand-200 uppercase tracking-wider block">Total Credited</span>
+                    <span className="text-[10px] font-bold text-brand-200 uppercase tracking-wider block">{t('schemes.totalCredited')}</span>
                     <span className="text-3xl font-extrabold text-white">₹{kisanData.total_amount_credited.toLocaleString('en-IN')}</span>
                     <span className="text-[11px] text-brand-200 block">{kisanData.total_installments_received} {t('schemes.installments')}</span>
                   </div>
@@ -291,15 +291,15 @@ export default function SchemesPage() {
 
                 <div className="mt-5 pt-4 border-t border-white/20 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                   <div className="bg-black/20 p-2.5 rounded-xl">
-                    <span className="text-[10px] text-brand-200 block">e-KYC Status</span>
+                    <span className="text-[10px] text-brand-200 block">{t('schemes.ekycStatus')}</span>
                     <span className="font-bold text-emerald-300">✅ {kisanData.ekyc_status}</span>
                   </div>
                   <div className="bg-black/20 p-2.5 rounded-xl">
-                    <span className="text-[10px] text-brand-200 block">Land Seeding</span>
+                    <span className="text-[10px] text-brand-200 block">{t('schemes.landSeeding')}</span>
                     <span className="font-bold text-emerald-300">✅ {kisanData.land_seeding}</span>
                   </div>
                   <div className="bg-black/20 p-2.5 rounded-xl col-span-2">
-                    <span className="text-[10px] text-brand-200 block">Next Expected Installment</span>
+                    <span className="text-[10px] text-brand-200 block">{t('schemes.nextInstallment')}</span>
                     <span className="font-bold text-white">{kisanData.next_expected_installment} • Expected {kisanData.next_expected_date}</span>
                   </div>
                 </div>
@@ -307,7 +307,7 @@ export default function SchemesPage() {
 
               {/* Installment History */}
               <div className="glass-card p-5">
-                <h4 className="text-sm font-extrabold text-slate-900 mb-3">{t('schemes.dbtHistory')}</h4>
+                <h4 className="text-sm font-extrabold text-slate-900 mb-3">{t('schemes.recentHistory')}</h4>
                 <div className="space-y-2">
                   {kisanData.recent_history.map((h, idx) => (
                     <div key={idx} className="flex justify-between items-center p-3 rounded-xl bg-slate-50 border border-slate-100 text-xs">
@@ -316,12 +316,12 @@ export default function SchemesPage() {
                           ₹
                         </div>
                         <div>
-                          <p className="font-bold text-slate-900">{h.installment} Installment — ₹{h.amount}</p>
-                          <p className="text-[11px] text-slate-500">Credited: {h.date} • {h.bank}</p>
+                          <p className="font-bold text-slate-900">{h.installment} {t('schemes.pmKisan')} — ₹{h.amount}</p>
+                          <p className="text-[11px] text-slate-500">{h.date} • {h.bank}</p>
                         </div>
                       </div>
                       <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-                        {h.status}
+                        {t('schemes.paymentSucceeded')}
                       </span>
                     </div>
                   ))}
@@ -332,12 +332,12 @@ export default function SchemesPage() {
         </div>
       )}
 
-      {/* TAB 2: {t('schemes.pmfby')} & Claim Tracker */}
+      {/* TAB 2: PMFBY & Claim Tracker */}
       {activeTab === 'pmfby' && (
         <div className="space-y-5">
           <div className="flex justify-between items-center">
             <div>
-              <h3 className="text-base font-extrabold text-slate-900">PMFBY Crop Loss Claims & Tracking</h3>
+              <h3 className="text-base font-extrabold text-slate-900">{t('schemes.pmfby')}</h3>
               <p className="text-xs text-slate-500">Intimate loss within 72 hours of localized calamity as per National Crop Insurance rules</p>
             </div>
             <button
@@ -345,7 +345,7 @@ export default function SchemesPage() {
               className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-xl shadow-xs transition active:scale-95 flex items-center gap-1.5"
             >
               <span className="material-symbols-outlined text-[18px]">add_circle</span>
-              File New Claim
+              {t('schemes.pmfby')}
             </button>
           </div>
 
@@ -420,7 +420,7 @@ export default function SchemesPage() {
 
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="block font-bold text-slate-700 mb-1">Affected Land (Acres)</label>
+                      <label className="block font-bold text-slate-700 mb-1">{t('finance.farmLandAcres')}</label>
                       <input
                         type="number"
                         step="0.5"
@@ -482,7 +482,7 @@ export default function SchemesPage() {
           <div className="lg:col-span-5 glass-card p-5 space-y-4">
             <h3 className="text-sm font-extrabold text-slate-900 pb-2 border-b border-slate-100 flex items-center gap-2">
               <span className="material-symbols-outlined text-brand-600">tune</span>
-              Soil Test Parameters (Govt Lab Values)
+              {t('schemes.soilHealth')}
             </h3>
 
             <div className="space-y-3 text-xs">
@@ -552,7 +552,7 @@ export default function SchemesPage() {
                 disabled={soilLoading}
                 className="w-full py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl shadow-xs transition active:scale-95 mt-2"
               >
-                {soilLoading ? 'Recalculating...' : 'Generate Fertilizer Prescription'}
+                {soilLoading ? '...' : t('schemes.soilHealth')}
               </button>
             </div>
           </div>
@@ -591,12 +591,12 @@ export default function SchemesPage() {
         </div>
       )}
 
-      {/* TAB 4: {t('schemes.subsidies')} */}
+      {/* TAB 4: Subsidies */}
       {activeTab === 'subsidies' && (
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
             <div>
-              <h3 className="text-base font-extrabold text-slate-900">Active State & Central Agricultural Subsidies</h3>
+              <h3 className="text-base font-extrabold text-slate-900">{t('schemes.subsidies')}</h3>
               <p className="text-xs text-slate-500">Apply directly through official DBT portals with verified Aadhaar seeding</p>
             </div>
 

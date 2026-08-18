@@ -58,7 +58,7 @@ export default function SatellitePage() {
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-[#14532d] animate-pulse"></span>
             <span className="text-[11px] font-extrabold uppercase tracking-wider text-[#14532d]">
-              Sentinel-2 MSI 10m Resolution
+              {t('satellite.resolutionBadge')}
             </span>
           </div>
           <h2 className="text-xl sm:text-2xl font-extrabold text-[#1c1917] tracking-tight font-editorial mt-0.5">
@@ -92,7 +92,7 @@ export default function SatellitePage() {
               <h3 className="text-base font-extrabold text-[#1c1917] font-editorial">{current.name}</h3>
               <p className="text-[11px] text-[#78716c] mt-0.5 flex items-center gap-1">
                 <span className="material-symbols-outlined text-[15px] text-[#78716c]">schedule</span>
-                Acquired: {current.acquired}
+                {t('satellite.acquired')}: {current.acquired}
               </p>
             </div>
 
@@ -113,7 +113,7 @@ export default function SatellitePage() {
             </div>
           </div>
 
-          {/* Interactive Leaflet Map Container with Explicit Responsive Height */}
+          {/* Interactive Leaflet Map Container */}
           <div className="relative w-full h-[320px] sm:h-[400px] lg:h-[460px] rounded-2xl overflow-hidden border border-[#e7e5e4]">
             <MapContainer
               center={centerPosition}
@@ -148,96 +148,98 @@ export default function SatellitePage() {
 
               {/* Simulated Stress Hotspot Pin */}
               <CircleMarker
-                center={[29.6845, 76.9920]}
-                radius={16}
+                center={[29.6845, 76.9915]}
+                radius={9}
                 pathOptions={{
-                  color: '#ea580c',
-                  fillColor: '#ea580c',
-                  fillOpacity: 0.6,
-                  dashArray: '4, 4'
+                  color: '#b45309',
+                  fillColor: '#f59e0b',
+                  fillOpacity: 0.85,
+                  weight: 2
                 }}
               >
                 <Popup>
                   <div className="font-sans text-xs">
-                    <p className="font-bold text-[#ea580c]">⚠️ Nitrogen Stress Hotspot</p>
-                    <p>Chlorophyll deficit detected in SE 0.8 Acres.</p>
+                    <p className="font-bold text-[#b45309]">Nitrogen Stress Detected</p>
+                    <p className="text-[11px] text-[#57534e]">NDVI: 0.58 (Low Biomass Zone)</p>
                   </div>
                 </Popup>
               </CircleMarker>
             </MapContainer>
 
-            {/* In-Map Floating Badges */}
-            <div className="absolute top-3 left-3 z-[1000] bg-white/95 backdrop-blur-xs px-2.5 py-1 rounded-xl border border-[#e7e5e4] shadow-xs flex items-center gap-1.5 text-[11px] font-bold text-[#14532d]">
-              <span className="w-2 h-2 rounded-full bg-[#14532d]"></span>
-              <span>Healthy Canopy (87%)</span>
+            {/* Map Legend Overlay */}
+            <div className="absolute bottom-3 left-3 z-[1000] bg-white/90 backdrop-blur-xs p-2.5 rounded-xl border border-[#e7e5e4] shadow-xs text-[10px] font-bold text-[#1c1917] flex items-center gap-3">
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#16a34a]"></span>
+                <span>Healthy (87%)</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#f59e0b]"></span>
+                <span>Low N (13%)</span>
+              </div>
             </div>
-
-            <div className="absolute bottom-3 right-3 z-[1000] bg-[#fffbeb]/95 backdrop-blur-xs px-2.5 py-1 rounded-xl border border-[#fef3c7] shadow-xs text-[#92400e] flex items-center gap-1 text-[11px] font-bold">
-              <span className="material-symbols-outlined text-[15px] text-[#ea580c]">warning</span>
-              <span>Low Nitrogen (13%)</span>
-            </div>
-          </div>
-
-          {/* Color Gradient Legend */}
-          <div className="mt-4 flex items-center justify-center gap-3 text-xs font-semibold text-[#78716c]">
-            <span className="text-[11px]">Low (0.0)</span>
-            <div className="h-2.5 w-48 sm:w-64 bg-gradient-to-r from-red-500 via-yellow-400 to-[#14532d] rounded-full shadow-inner"></div>
-            <span className="text-[11px]">High (1.0)</span>
           </div>
         </div>
 
-        {/* Right Column: Sticky Telemetry Notes */}
-        <div className="w-full lg:w-[320px] flex flex-col gap-3 sm:gap-4">
-          {/* Canopy Score Note */}
+        {/* Right / Sidebar: Diagnostic Crop Analytics */}
+        <div className="w-full lg:w-[340px] space-y-4">
+          {/* Canopy Health Card */}
           <div className="paper-card p-4 sm:p-5">
-            <div className="flex justify-between items-start mb-2">
-              <h4 className="text-xs font-extrabold flex items-center gap-1.5 text-[#1c1917]">
-                <span className="material-symbols-outlined text-[#14532d] bg-emerald-50 p-1 rounded-lg text-[18px]">
-                  eco
-                </span>
-                Canopy Health Index
-              </h4>
-              <span className="text-xl font-black text-[#14532d]">
-                {current.canopyScore}<span className="text-[#78716c] text-xs font-normal">/100</span>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-[#14532d] text-[20px]">spa</span>
+                <h4 className="text-xs font-extrabold text-[#1c1917] uppercase tracking-wider">
+                  {t('satellite.canopyHealthIndex')}
+                </h4>
+              </div>
+              <span className="text-lg font-extrabold text-[#14532d] font-editorial">
+                {current.canopyScore}/100
               </span>
             </div>
             <p className="text-xs text-[#57534e] leading-relaxed">
-              Overall biomass coverage looks strong. Slight dip in the SE quadrant compared to last week.
+              {t('satellite.canopyHealthDesc')}
             </p>
           </div>
 
-          {/* Moisture % Note */}
+          {/* Root Zone Moisture Card */}
           <div className="paper-card p-4 sm:p-5">
-            <div className="flex justify-between items-start mb-2">
-              <h4 className="text-xs font-extrabold flex items-center gap-1.5 text-[#1c1917]">
-                <span className="material-symbols-outlined text-blue-700 bg-blue-50 p-1 rounded-lg text-[18px]">
-                  water_drop
-                </span>
-                Root Zone Soil Moisture
-              </h4>
-              <span className="text-xl font-black text-blue-700">{current.moisture}</span>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-blue-700 text-[20px]">water_drop</span>
+                <h4 className="text-xs font-extrabold text-[#1c1917] uppercase tracking-wider">
+                  {t('satellite.rootZoneMoisture')}
+                </h4>
+              </div>
+              <span className="text-lg font-extrabold text-blue-700 font-editorial">{current.moisture}</span>
             </div>
             <p className="text-xs text-[#57534e] leading-relaxed">
-              Holding steady at root depth. No immediate irrigation needed for the next 48 hours.
+              {t('satellite.rootZoneDesc')}
             </p>
           </div>
 
-          {/* Nitrogen Alert Note */}
-          <div className="paper-card p-4 sm:p-5 border-l-4 border-l-[#ea580c] bg-[#fffbeb]">
-            <div className="flex justify-between items-start mb-1.5">
-              <h4 className="text-xs font-extrabold text-[#92400e] flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[#ea580c] text-[18px]">error</span>
-                Nitrogen Deficit Alert
+          {/* Nitrogen Deficit Alert Card */}
+          <div className="paper-card p-4 sm:p-5 border-l-4 border-l-[#b45309] bg-[#faf8f5]">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="material-symbols-outlined text-[#b45309] text-[20px]">warning</span>
+              <h4 className="text-xs font-extrabold text-[#b45309] uppercase tracking-wider">
+                {t('satellite.nitrogenDeficitAlert')}
               </h4>
             </div>
-            <p className="text-xs text-[#78350f] leading-relaxed">
-              Low N detected in SE quadrant stress zone. Recommend targeted top-dress urea (18 kg/acre) before upcoming showers.
+            <p className="text-xs text-[#57534e] leading-relaxed mb-3">
+              {t('satellite.nitrogenDeficitDesc')}
             </p>
+
             <button
               onClick={() => setTreatmentScheduled(true)}
-              className="mt-3 w-full bg-[#14532d] hover:bg-[#052e16] text-white text-xs font-extrabold py-2.5 px-4 rounded-xl transition shadow-xs btn-tap"
+              className={`w-full py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
+                treatmentScheduled
+                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                  : 'bg-[#14532d] hover:bg-[#052e16] text-white shadow-2xs'
+              }`}
             >
-              {treatmentScheduled ? '✓ Advisory Scheduled' : 'Schedule Urea Treatment'}
+              <span className="material-symbols-outlined text-[16px]">
+                {treatmentScheduled ? 'done' : 'calendar_add_on'}
+              </span>
+              {treatmentScheduled ? 'Treatment Scheduled' : t('satellite.scheduleTreatment')}
             </button>
           </div>
         </div>

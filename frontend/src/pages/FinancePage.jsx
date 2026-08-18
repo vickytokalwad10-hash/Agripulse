@@ -138,7 +138,7 @@ export default function FinancePage() {
 
             <div className="space-y-3.5 text-xs">
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Operational Farm Land (Acres)</label>
+                <label className="block font-bold text-slate-700 mb-1">{t('finance.farmLandAcres')}</label>
                 <input
                   type="number"
                   step="0.5"
@@ -149,7 +149,7 @@ export default function FinancePage() {
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Primary Cultivation Crop</label>
+                <label className="block font-bold text-slate-700 mb-1">{t('finance.primaryCrop')}</label>
                 <select
                   value={primaryCrop}
                   onChange={(e) => setPrimaryCrop(e.target.value)}
@@ -165,7 +165,7 @@ export default function FinancePage() {
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Irrigation Availability</label>
+                <label className="block font-bold text-slate-700 mb-1">{t('finance.irrigationAvailability')}</label>
                 <select
                   value={irrigationStatus}
                   onChange={(e) => setIrrigationStatus(e.target.value)}
@@ -177,7 +177,7 @@ export default function FinancePage() {
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Existing Outstanding Loans (₹)</label>
+                <label className="block font-bold text-slate-700 mb-1">{t('finance.existingLoans')}</label>
                 <input
                   type="number"
                   value={existingLoan}
@@ -192,7 +192,7 @@ export default function FinancePage() {
                 disabled={kccLoading}
                 className="w-full py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl shadow-xs transition active:scale-95 mt-2"
               >
-                {kccLoading ? 'Calculating Scale...' : 'Calculate KCC Limit'}
+                {kccLoading ? '...' : t('finance.calculateBtn')}
               </button>
             </div>
           </div>
@@ -203,45 +203,44 @@ export default function FinancePage() {
                 <div className="hero-gradient-card p-6">
                   <div className="flex justify-between items-start">
                     <div>
-                      <span className="text-[11px] font-bold text-brand-200 uppercase tracking-wider block">
-                        Eligible KCC Limit (Year 1)
+                      <span className="text-[10px] font-bold text-brand-200 uppercase tracking-wider block">
+                        {t('finance.eligibleLimit')}
                       </span>
-                      <h4 className="text-3xl sm:text-4xl font-extrabold text-white mt-0.5">
+                      <h4 className="text-3xl font-extrabold text-white mt-0.5">
                         ₹{kccResult.first_year_eligible_limit.toLocaleString('en-IN')}
                       </h4>
                       <p className="text-xs text-brand-100 mt-1">
-                        5-Year Revolving Limit: <strong>₹{kccResult.five_year_revolving_limit.toLocaleString('en-IN')}</strong>
+                        {t('finance.revolvingLimit')}: ₹{kccResult.five_year_revolving_limit.toLocaleString('en-IN')}
                       </p>
                     </div>
-
-                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-white/20 text-white border border-white/30">
+                    <span className="px-3 py-1 bg-white/20 text-white text-xs font-extrabold rounded-full backdrop-blur-xs">
                       4.0% Subsidized ROI
                     </span>
                   </div>
 
-                  <div className="mt-5 pt-4 border-t border-white/20 grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                  <div className="mt-5 pt-4 border-t border-white/20 grid grid-cols-3 gap-2 text-xs">
                     <div className="bg-black/20 p-2.5 rounded-xl">
-                      <span className="text-[10px] text-brand-200 block">Crop Component</span>
-                      <span className="font-bold text-white">₹{kccResult.crop_component.toLocaleString('en-IN')}</span>
+                      <span className="text-[10px] text-brand-200 block">{t('finance.cropComponent')}</span>
+                      <span className="font-extrabold text-white">₹{kccResult.crop_component.toLocaleString('en-IN')}</span>
                     </div>
                     <div className="bg-black/20 p-2.5 rounded-xl">
-                      <span className="text-[10px] text-brand-200 block">Household (10%)</span>
-                      <span className="font-bold text-white">₹{kccResult.post_harvest_consumption_10pct.toLocaleString('en-IN')}</span>
+                      <span className="text-[10px] text-brand-200 block">{t('finance.householdComp')}</span>
+                      <span className="font-extrabold text-white">₹{kccResult.post_harvest_consumption_10pct.toLocaleString('en-IN')}</span>
                     </div>
-                    <div className="bg-black/20 p-2.5 rounded-xl col-span-2 sm:col-span-1">
-                      <span className="text-[10px] text-brand-200 block">Asset Repairs (20%)</span>
-                      <span className="font-bold text-white">₹{kccResult.asset_maintenance_20pct.toLocaleString('en-IN')}</span>
+                    <div className="bg-black/20 p-2.5 rounded-xl">
+                      <span className="text-[10px] text-brand-200 block">{t('finance.assetRepairs')}</span>
+                      <span className="font-extrabold text-white">₹{kccResult.asset_maintenance_20pct.toLocaleString('en-IN')}</span>
                     </div>
                   </div>
                 </div>
 
-                <div className="glass-card p-5 space-y-2 text-xs">
+                <div className="glass-card p-4 space-y-2 text-xs text-slate-600">
                   <div className="flex items-center gap-2 text-emerald-800 font-bold">
-                    <span className="material-symbols-outlined text-[20px] text-emerald-600">verified</span>
+                    <span className="material-symbols-outlined text-[18px]">verified</span>
                     <span>{kccResult.interest_subvention_rate}</span>
                   </div>
-                  <div className="flex items-center gap-2 text-slate-600">
-                    <span className="material-symbols-outlined text-[20px] text-slate-400">security</span>
+                  <div className="flex items-center gap-2 text-slate-500">
+                    <span className="material-symbols-outlined text-[18px]">shield</span>
                     <span>{kccResult.collateral_requirement}</span>
                   </div>
                 </div>
@@ -251,72 +250,43 @@ export default function FinancePage() {
         </div>
       )}
 
-      {/* TAB 2: Loan Marketplace */}
+      {/* TAB 2: Marketplace */}
       {activeTab === 'marketplace' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {lenders.map((l) => (
-            <div key={l.id} className="glass-card p-5 flex flex-col justify-between space-y-4">
+            <div key={l.id} className="glass-card p-5 space-y-3 flex flex-col justify-between">
               <div>
-                <div className="flex justify-between items-start">
-                  <div>
-                    <span className="text-xs font-bold text-slate-500 block">{l.institution}</span>
-                    <h4 className="text-base font-extrabold text-slate-900 mt-0.5">{l.product}</h4>
-                  </div>
-                  <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-brand-100 text-brand-800">
-                    {l.badge}
-                  </span>
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-xs font-bold text-slate-500">{l.type}</span>
+                  <span className="text-xs font-extrabold text-brand-700 bg-brand-50 px-2 py-0.5 rounded-full">{l.interest_rate}</span>
                 </div>
-
-                <div className="grid grid-cols-2 gap-2 my-3 p-3 rounded-xl bg-slate-50 border border-slate-100 text-xs">
-                  <div>
-                    <span className="text-[10px] text-slate-400 block">Interest Rate</span>
-                    <span className="font-extrabold text-brand-700">{l.interest_rate}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-400 block">Max Limit</span>
-                    <span className="font-extrabold text-slate-900">{l.max_amount}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-400 block">Tenure</span>
-                    <span className="font-semibold text-slate-700">{l.tenure}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-400 block">Processing Fee</span>
-                    <span className="font-semibold text-slate-700">{l.processing_fee}</span>
-                  </div>
+                <h4 className="text-base font-extrabold text-slate-900">{l.bank_name}</h4>
+                <p className="text-xs text-slate-600 mt-1">{l.tagline}</p>
+                <div className="mt-3 pt-3 border-t border-slate-100 space-y-1 text-xs">
+                  <p className="text-slate-500">Max Limit: <strong className="text-slate-900">{l.max_limit}</strong></p>
+                  <p className="text-slate-500">Processing: <strong className="text-slate-900">{l.processing_time}</strong></p>
                 </div>
-
-                <ul className="space-y-1 text-[11px] text-slate-600">
-                  {l.features.map((f, idx) => (
-                    <li key={idx} className="flex items-center gap-1.5">
-                      <span className="material-symbols-outlined text-[15px] text-brand-600">check_circle</span>
-                      <span>{f}</span>
-                    </li>
-                  ))}
-                </ul>
               </div>
-
-              <button className="w-full py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-xl shadow-xs transition active:scale-95">
-                Apply via JanSamarth Portal ↗
+              <button className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl shadow-xs transition">
+                Apply via Bank Branch
               </button>
             </div>
           ))}
         </div>
       )}
 
-      {/* TAB 3: Financial Literacy Tips */}
+      {/* TAB 3: Required Documents & Literacy */}
       {activeTab === 'literacy' && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {tips.map((t) => (
-            <div key={t.id} className="glass-card p-5 space-y-3">
-              <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center">
-                <span className="material-symbols-outlined text-[24px]">{t.icon}</span>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {tips.map((tItem) => (
+            <div key={tItem.id} className="glass-card p-5 space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-brand-600 text-[20px]">{tItem.icon}</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-brand-700">{tItem.category}</span>
               </div>
-              <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">
-                {t.category}
-              </span>
-              <h4 className="text-sm font-extrabold text-slate-900">{t.title}</h4>
-              <p className="text-xs text-slate-600 leading-relaxed font-medium">{t.summary}</p>
+              <h4 className="text-sm font-extrabold text-slate-900">{tItem.title}</h4>
+              <p className="text-xs text-slate-600">{tItem.summary}</p>
+              <p className="text-xs font-bold text-slate-800 pt-2 border-t border-slate-100">💡 {tItem.action_point}</p>
             </div>
           ))}
         </div>

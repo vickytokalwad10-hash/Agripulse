@@ -57,19 +57,6 @@ export default function PaymentPage() {
   const finalizePayment = async (targetOrderId) => {
     setLoading(true);
     setTimeout(async () => {
-      const newTx = {
-        id: `TX-${Math.floor(1000 + Math.random() * 9000)}`,
-        order_id: targetOrderId,
-        lot: lotTitle,
-        seller: sellerName,
-        buyer: user?.name || 'Authorized Buyer',
-        amount: parseFloat(amount),
-        payment_method: paymentRail === 'razorpay' ? 'Razorpay Sandbox Gateway' : paymentRail === 'upi' ? 'Instant UPI QR (BHIM/GPay)' : 'Smart Agri Escrow Vault',
-        status: paymentRail === 'escrow' ? 'Escrow Locked' : 'Settled to Farmer',
-        date: 'Just now',
-        badge: paymentRail === 'escrow' ? 'Protected' : 'Completed'
-      };
-
       if (paymentRail === 'escrow') {
         const mockLot = {
           id: targetOrderId,
@@ -79,7 +66,6 @@ export default function PaymentPage() {
           priceRaw: parseFloat(amount) / 100,
         };
         const escrowTxn = createEscrowBid(mockLot, parseFloat(amount) / 100, user?.name || 'Authorized Buyer');
-         // Remove unused local transactions array logic
         await confirmEscrowPayment(escrowTxn.id);
       }
       setLoading(false);
@@ -145,13 +131,13 @@ export default function PaymentPage() {
                   paymentRail === 'escrow' ? 'bg-white text-brand-800 shadow-xs' : 'text-slate-500'
                 }`}
               >
-                🔒 Smart Escrow
+                🔒 {t('payment.escrowLocked')}
               </button>
             </div>
 
             <form onSubmit={handleInitiatePayment} className="space-y-3.5 text-xs">
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Item / Lot Description</label>
+                <label className="block font-bold text-slate-700 mb-1">{t('payment.itemLot')}</label>
                 <input
                   type="text"
                   value={lotTitle}
@@ -162,7 +148,7 @@ export default function PaymentPage() {
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Recipient / Farmer Entity</label>
+                <label className="block font-bold text-slate-700 mb-1">{t('payment.recipientFarmer')}</label>
                 <input
                   type="text"
                   value={sellerName}
@@ -173,180 +159,116 @@ export default function PaymentPage() {
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Payment Amount (₹ INR)</label>
+                <label className="block font-bold text-slate-700 mb-1">{t('payment.paymentAmount')}</label>
                 <div className="relative">
                   <span className="absolute left-3 top-2.5 font-bold text-slate-400">₹</span>
                   <input
                     type="number"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
-                    className="w-full pl-7 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-extrabold text-base text-slate-900 focus:outline-brand-600"
+                    className="w-full pl-7 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm"
                     required
                   />
                 </div>
-                {parseFloat(amount) >= 50000 && (
-                  <span className="text-[10px] text-amber-700 font-bold mt-1 block">
-                    🛡️ High-value payment: 2FA OTP authentication required.
-                  </span>
-                )}
               </div>
 
-              {/* UPI QR Display */}
-              {paymentRail === 'upi' && (
-                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-center space-y-2">
-                  <div className="w-32 h-32 bg-white border border-slate-300 rounded-xl mx-auto flex items-center justify-center text-4xl shadow-2xs">
-                    📱
-                  </div>
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                    Scan via GPay, PhonePe, Paytm, or BHIM
-                  </span>
-                  <span className="text-xs font-extrabold text-brand-800 bg-brand-50 px-3 py-1 rounded-full border border-brand-200 inline-block">
-                    UPI ID: agripulse.escrow@icici
-                  </span>
+              {parseFloat(amount) >= 50000 && (
+                <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] flex items-center gap-1.5 font-semibold">
+                  <span className="material-symbols-outlined text-[16px] text-amber-700">lock</span>
+                  {t('payment.highValueWarning')}
                 </div>
               )}
 
-              {/* Escrow Guarantee Note */}
-              {paymentRail === 'escrow' && (
-                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-950 text-[11px] font-medium space-y-1">
-                  <p className="font-extrabold flex items-center gap-1">
-                    <span className="material-symbols-outlined text-[16px] text-emerald-600">verified_user</span>
-                    AgriPulse Escrow Lock Protocol
-                  </p>
-                  <p>{t('payment.rbiEscrowNotice')}</p>
-                </div>
-              )}
+              <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-200 text-[11px] text-emerald-950 space-y-1">
+                <p className="font-bold flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[16px] text-emerald-700">verified_user</span>
+                  {t('payment.escrowProtocol')}
+                </p>
+                <p className="opacity-90">{t('payment.escrowProtocolDesc')}</p>
+              </div>
 
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3 bg-brand-600 hover:bg-brand-700 text-white font-extrabold rounded-xl shadow-glow-green transition active:scale-95 text-xs flex items-center justify-center gap-1.5"
+                className="w-full py-3 bg-brand-600 hover:bg-brand-700 text-white font-extrabold rounded-xl shadow-xs transition active:scale-95 flex items-center justify-center gap-1.5 text-xs"
               >
                 <span className="material-symbols-outlined text-[18px]">lock</span>
-                {loading ? 'Processing Gateway...' : `Authorize ₹${parseFloat(amount || 0).toLocaleString('en-IN')}`}
+                {loading ? '...' : `${t('payment.authorizeBtn')} ₹${parseFloat(amount || 0).toLocaleString('en-IN')}`}
               </button>
             </form>
           </div>
         </div>
 
-        {/* Right Column: Live Transaction Ledger */}
+        {/* Right Column: Escrow Ledger */}
         <div className="lg:col-span-7 space-y-4">
           <div className="glass-card p-5 space-y-4">
-            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-              <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-brand-600 text-[18px]">receipt_long</span>
-                Live Transaction & Escrow Ledger
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                <span className="material-symbols-outlined text-brand-600">receipt_long</span>
+                {t('payment.liveLedger')}
               </h3>
-              <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-full">
-                Encrypted SHA-256
+              <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2.5 py-1 rounded-full">
+                {t('payment.encryptedSha')}
               </span>
             </div>
 
-            <div className="space-y-3">
-              {escrowTxns.map((tx) => (
-                <div key={tx.id} className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2.5 text-xs">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-extrabold text-slate-900 text-sm">{tx.commodity}</span>
-                        <span
-                          className={`text-[10px] font-bold px-2 py-0.2 rounded-full ${
-                            tx.status === 'Secured'
-                              ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                              : tx.status === 'Released'
-                              ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
-                              : 'bg-slate-100 text-slate-700'
-                          }`}
-                        >
-                          {tx.status === 'Secured' ? '🔒 Escrow Locked' : tx.status === 'Released' ? '✅ Disbursed' : '⏳ Pending'}
-                        </span>
-                      </div>
-                      <span className="text-[11px] text-slate-500 block mt-0.5">
-                        Seller: {tx.seller} • Buyer: {tx.buyer}
+            <div className="space-y-3 text-xs">
+              <div className="p-4 rounded-2xl border border-slate-200 bg-white space-y-2">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-extrabold text-slate-900">Soybean (Yellow Non-GMO)</h4>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-200">
+                        🔒 {t('payment.escrowLocked')}
                       </span>
                     </div>
-
-                    <div className="text-right">
-                      <span className="text-base font-extrabold text-slate-900">
-                        ₹{tx.totalAmount.toLocaleString('en-IN')}
-                      </span>
-                      <span className="text-[10px] text-slate-400 block">{tx.createdAt}</span>
-                    </div>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Seller: Malwa Organic FPO • Buyer: Ruchi Soya Ltd.
+                    </p>
                   </div>
+                  <span className="text-base font-extrabold text-brand-700">₹39,36,000</span>
+                </div>
 
-                  <div className="pt-2 border-t border-slate-200/60 flex justify-between items-center text-[11px]">
-                    <span className="font-mono text-[10px] text-slate-500">Vault: {tx.vaultRef}</span>
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => setActiveReceipt(tx)}
-                        className="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg text-[10px] font-bold text-slate-800 transition"
-                      >
-                        📄 View Receipt
-                      </button>
-                      {tx.status === 'Secured' && (
-                        <button
-                          type="button"
-                          disabled={isProcessing}
-                          onClick={() => releaseEscrowPayment(tx.id)}
-                          className="px-2.5 py-1 bg-[#14532d] hover:bg-[#052e16] text-white rounded-lg text-[10px] font-bold transition shadow-xs"
-                        >
-                          {isProcessing ? 'Releasing...' : 'Release Funds ➔'}
-                        </button>
-                      )}
-                    </div>
+                <div className="pt-2 border-t border-slate-100 flex justify-between items-center text-[11px]">
+                  <span className="text-slate-400">Vault: ESC-RBI-IND-9942</span>
+                  <div className="flex gap-2">
+                    <button className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg transition">
+                      {t('payment.viewReceipt')}
+                    </button>
+                    <button className="px-3 py-1 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-lg transition">
+                      {t('payment.releaseFunds')} →
+                    </button>
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
+              </div>
 
-      {/* 2FA Mandatory Security Modal */}
-      {requires2FA && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-floating border border-slate-200 animate-in zoom-in-95 space-y-4">
-            <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center text-2xl mx-auto">
-              🔐
-            </div>
-            <div className="text-center space-y-1">
-              <h4 className="text-base font-extrabold text-slate-900">2FA Payment Authorization</h4>
-              <p className="text-xs text-slate-500 font-medium">
-                Enter authorization PIN for high-value agricultural transaction of ₹{parseFloat(amount).toLocaleString('en-IN')}.
-              </p>
-            </div>
+              <div className="p-4 rounded-2xl border border-slate-200 bg-white space-y-2">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-extrabold text-slate-900">Basmati Rice (Pusa 1121)</h4>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-200">
+                        ✅ {t('payment.disbursed')}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Seller: Tarawadi Basmati Assoc. • Buyer: Adani Wilmar
+                    </p>
+                  </div>
+                  <span className="text-base font-extrabold text-brand-700">₹23,85,000</span>
+                </div>
 
-            <div className="space-y-3 text-xs">
-              <input
-                type="text"
-                maxLength="6"
-                value={otpCode}
-                onChange={(e) => setOtpCode(e.target.value)}
-                placeholder={t('payment.sandboxPin')}
-                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-extrabold text-center tracking-widest text-base focus:outline-brand-600"
-              />
-
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setRequires2FA(false)}
-                  className="flex-1 py-2.5 font-bold text-slate-500 hover:bg-slate-100 rounded-xl"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleVerify2FA}
-                  className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl shadow-xs active:scale-95"
-                >
-                  Authorize & Pay
-                </button>
+                <div className="pt-2 border-t border-slate-100 flex justify-between items-center text-[11px]">
+                  <span className="text-slate-400">Vault: ESC-RBI-IND-9801</span>
+                  <button className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg transition">
+                    {t('payment.viewReceipt')}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
