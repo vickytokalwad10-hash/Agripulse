@@ -7,6 +7,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { useBackNavigation } from '../context/BackNavigationContext';
 import NotificationDrawer from './NotificationDrawer';
 import NotificationSettingsModal from './NotificationSettingsModal';
+import { APP_VERSION } from '../config/version';
 
 export default function AppLayout() {
   const { user, role, logout } = useAuth();
@@ -173,7 +174,7 @@ export default function AppLayout() {
             <div>
               <h1 className="font-extrabold text-base tracking-tight text-[#1c1917] leading-none font-editorial flex items-center gap-1.5">
                 AgriPulse <span className="font-sans text-[10px] font-bold text-[#b45309] bg-[#fef3c7] px-1.5 py-0.2 rounded-md">भारत</span>
-                <span className="font-sans text-[9px] font-bold text-[#14532d] bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded-md">v2.7.0</span>
+                <span className="font-sans text-[9px] font-bold text-[#14532d] bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded-md">{APP_VERSION}</span>
               </h1>
               <span className="text-[11px] text-[#78716c] font-medium block mt-1">
                 {role === 'buyer' ? (t('common.buyerTerminal') || '🏢 संस्थागत क्रेता टर्मिनल') : (t('common.farmerNetwork') || '🌾 किसान व एफपीओ नेटवर्क')}
