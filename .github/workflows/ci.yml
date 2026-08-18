@@ -37,12 +37,13 @@ jobs:
       with:
         python-version: '3.11'
         cache: 'pip'
+        cache-dependency-path: backend/requirements.txt
 
     - name: Install backend dependencies
       working-directory: ./backend
       run: |
         python -m pip install --upgrade pip
-        pip install fastapi uvicorn pydantic
+        pip install -r requirements.txt
 
     - name: Validate FastAPI App Syntax & Startup
       working-directory: ./backend
