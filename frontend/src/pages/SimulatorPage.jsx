@@ -30,22 +30,27 @@ export default function SimulatorPage() {
 
   // Dynamic Math Calculations
   const grossRevenue = Math.round(farmAcres * expectedYield * marketPrice);
-  const totalInputCost = Math.round(farmAcres * (fertilizerCost + 3200 + 1500)); // Fertilizer + Seeds/Labor + Irrigation
+  const totalInputCost = Math.round(farmAcres * (fertilizerCost + 3200 + 1500));
   const netProfit = grossRevenue - totalInputCost;
   const marginPct = ((netProfit / grossRevenue) * 100).toFixed(1);
   const roiPct = ((netProfit / totalInputCost) * 100).toFixed(1);
 
   // Scenario comparisons for Chart
-  const scenarioA = Math.round(netProfit * 0.72); // Drought / High Cost
-  const scenarioB = Math.round(netProfit * 0.9);  // Moderate Weather
+  const scenarioA = Math.round(netProfit * 0.72);
+  const scenarioB = Math.round(netProfit * 0.9);
   const currentScenario = netProfit;
-  const scenarioC = Math.round(netProfit * 1.18); // Optimal Precision
+  const scenarioC = Math.round(netProfit * 1.18);
 
   const chartData = {
-    labels: ['Scenario A (Stress)', 'Scenario B (Baseline)', 'Current Plan', 'Scenario C (Precision N+K)'],
+    labels: [
+      t('simulator.chartScenarioA'),
+      t('simulator.chartScenarioB'),
+      t('simulator.chartCurrentPlan'),
+      t('simulator.chartScenarioC')
+    ],
     datasets: [
       {
-        label: 'Net Farm Margin (₹)',
+        label: t('simulator.netProjectedMargin') + ' (₹)',
         data: [scenarioA, scenarioB, currentScenario, scenarioC],
         backgroundColor: [
           'rgba(239, 68, 68, 0.45)',
@@ -75,7 +80,7 @@ export default function SimulatorPage() {
         titleFont: { family: 'Plus Jakarta Sans', size: 11, weight: 'bold' },
         bodyFont: { family: 'Plus Jakarta Sans', size: 12 },
         callbacks: {
-          label: (context) => `Net Projected Margin: ₹${context.raw.toLocaleString('en-IN')}`
+          label: (context) => `${t('simulator.netProjectedMargin')}: ₹${context.raw.toLocaleString('en-IN')}`
         }
       }
     },
@@ -121,13 +126,13 @@ export default function SimulatorPage() {
           <div className="paper-card p-4 sm:p-5">
             <div className="flex justify-between items-center mb-3 pb-2.5 border-b border-[#f5f2eb]">
               <h3 className="text-sm font-extrabold text-[#1c1917] font-editorial">
-                Input Variables & Parameters
+                {t('simulator.inputVariables')}
               </h3>
             </div>
 
             {/* Quick 1-Tap Scenario Presets */}
             <div className="mb-4">
-              <span className="text-[10px] font-bold text-[#78716c] uppercase tracking-wider block mb-1.5">Scenario Presets:</span>
+              <span className="text-[10px] font-bold text-[#78716c] uppercase tracking-wider block mb-1.5">{t('simulator.scenarioPresets')}:</span>
               <div className="grid grid-cols-3 gap-1.5 text-[11px] font-bold">
                 <button
                   type="button"
@@ -139,7 +144,7 @@ export default function SimulatorPage() {
                   }}
                   className="p-1.5 rounded-lg border border-red-200 bg-red-50 text-red-800 hover:bg-red-100 transition text-center"
                 >
-                  🌧️ Stress (-15%)
+                  🌧️ {t('simulator.scenarioStress')}
                 </button>
                 <button
                   type="button"
@@ -151,7 +156,7 @@ export default function SimulatorPage() {
                   }}
                   className="p-1.5 rounded-lg border border-slate-200 bg-slate-100 text-slate-800 hover:bg-slate-200 transition text-center"
                 >
-                  ⚖️ Baseline
+                  ⚖️ {t('simulator.scenarioBaseline')}
                 </button>
                 <button
                   type="button"
@@ -163,7 +168,7 @@ export default function SimulatorPage() {
                   }}
                   className="p-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 transition text-center"
                 >
-                  🚀 High Yield (+20%)
+                  🚀 {t('simulator.scenarioHighYield')}
                 </button>
               </div>
             </div>
@@ -172,7 +177,7 @@ export default function SimulatorPage() {
               {/* Slider 1: Fertilizer Cost */}
               <div className="space-y-1.5">
                 <div className="flex justify-between items-center text-xs font-bold">
-                  <label className="text-[#44403c]">Fertilizer Cost (₹/Acre)</label>
+                  <label className="text-[#44403c]">{t('simulator.fertilizerCostLabel')}</label>
                   <span className="text-[#1c1917] bg-[#f5f2eb] px-2 py-0.5 rounded-lg border border-[#e7e5e4]">
                     ₹{fertilizerCost}
                   </span>
@@ -191,7 +196,7 @@ export default function SimulatorPage() {
               {/* Slider 2: Expected Yield */}
               <div className="space-y-1.5">
                 <div className="flex justify-between items-center text-xs font-bold">
-                  <label className="text-[#44403c]">Expected Yield (Quintals/Acre)</label>
+                  <label className="text-[#44403c]">{t('simulator.expectedYieldLabel')}</label>
                   <span className="text-[#1c1917] bg-[#f5f2eb] px-2 py-0.5 rounded-lg border border-[#e7e5e4]">
                     {expectedYield} qtl
                   </span>
@@ -210,7 +215,7 @@ export default function SimulatorPage() {
               {/* Slider 3: Target Mandi Price */}
               <div className="space-y-1.5">
                 <div className="flex justify-between items-center text-xs font-bold">
-                  <label className="text-[#44403c]">Target Mandi Spot (₹/qtl)</label>
+                  <label className="text-[#44403c]">{t('simulator.targetMandiLabel')}</label>
                   <span className="text-[#14532d] bg-[#f5fdf7] px-2 py-0.5 rounded-lg border border-[#bbf7d0]">
                     ₹{marketPrice}
                   </span>
@@ -229,9 +234,9 @@ export default function SimulatorPage() {
               {/* Slider 4: Land Holdings */}
               <div className="space-y-1.5">
                 <div className="flex justify-between items-center text-xs font-bold">
-                  <label className="text-[#44403c]">Operational Acreage</label>
+                  <label className="text-[#44403c]">{t('simulator.operationalAcreage')}</label>
                   <span className="text-[#1c1917] bg-[#f5f2eb] px-2 py-0.5 rounded-lg border border-[#e7e5e4]">
-                    {farmAcres} Acres
+                    {farmAcres} {t('common.acres')}
                   </span>
                 </div>
                 <input
@@ -247,9 +252,9 @@ export default function SimulatorPage() {
             </div>
 
             <div className="mt-4 pt-3 border-t border-[#f5f2eb] flex justify-between items-center text-xs">
-              <span className="text-[11px] text-[#78716c]">2026 Rabi Model</span>
+              <span className="text-[11px] text-[#78716c]">{t('simulator.rabiModel2026')}</span>
               <span className="font-extrabold text-[#14532d] bg-[#f5fdf7] border border-[#bbf7d0] px-2 py-0.5 rounded-full text-[10px]">
-                Live Dynamic Math
+                {t('simulator.liveDynamicMath')}
               </span>
             </div>
           </div>
@@ -261,28 +266,28 @@ export default function SimulatorPage() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
             <div className="paper-card p-3 sm:p-4">
               <span className="text-[9px] uppercase tracking-wider font-extrabold text-[#78716c] block mb-1">
-                Gross Revenue
+                {t('simulator.grossRevenue')}
               </span>
               <div className="text-base sm:text-lg font-extrabold text-[#1c1917]">₹{grossRevenue.toLocaleString('en-IN')}</div>
             </div>
 
             <div className="paper-card p-3 sm:p-4">
               <span className="text-[9px] uppercase tracking-wider font-extrabold text-[#78716c] block mb-1">
-                Input Expenses
+                {t('simulator.inputExpenses')}
               </span>
               <div className="text-base sm:text-lg font-extrabold text-[#78716c]">₹{totalInputCost.toLocaleString('en-IN')}</div>
             </div>
 
             <div className="paper-card p-3 sm:p-4 bg-[#f5fdf7] border border-[#bbf7d0]">
               <span className="text-[9px] uppercase tracking-wider font-extrabold text-[#14532d] block mb-1">
-                Net Profit
+                {t('simulator.netProfit')}
               </span>
               <div className="text-base sm:text-lg font-extrabold text-[#14532d]">₹{netProfit.toLocaleString('en-IN')}</div>
             </div>
 
             <div className="paper-card p-3 sm:p-4">
               <span className="text-[9px] uppercase tracking-wider font-extrabold text-[#78716c] block mb-1">
-                Return on Capital
+                {t('simulator.returnOnCapital')}
               </span>
               <div className="text-base sm:text-lg font-extrabold text-[#14532d]">+{roiPct}%</div>
             </div>
@@ -292,11 +297,11 @@ export default function SimulatorPage() {
           <div className="paper-card p-4 sm:p-5">
             <div className="flex justify-between items-center mb-4 pb-2 border-b border-[#f5f2eb]">
               <div>
-                <h3 className="text-sm font-extrabold text-[#1c1917] font-editorial">Projected Margin Scenarios</h3>
-                <p className="text-[10px] text-[#78716c]">Comparative financial yield across 4 weather and agronomy models</p>
+                <h3 className="text-sm font-extrabold text-[#1c1917] font-editorial">{t('simulator.projectedScenarios')}</h3>
+                <p className="text-[10px] text-[#78716c]">{t('simulator.comparativeYield')}</p>
               </div>
               <span className="bg-[#f5fdf7] border border-[#bbf7d0] text-[#14532d] text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
-                <span className="material-symbols-outlined text-[13px]">trending_up</span> Optimized
+                <span className="material-symbols-outlined text-[13px]">trending_up</span> {t('simulator.optimized')}
               </span>
             </div>
 

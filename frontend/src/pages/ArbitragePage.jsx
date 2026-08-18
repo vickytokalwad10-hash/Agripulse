@@ -38,12 +38,20 @@ export default function ArbitragePage() {
     { name: 'Jaipur Surajpole Mandi', state: 'Rajasthan', distanceKm: 340, spotPrice: 3050, lat: 26.9124, lng: 75.7873, isBase: false }
   ];
 
+  const cropKeys = [
+    { id: 'wheat', labelKey: 'arbitrage.cropWheat' },
+    { id: 'paddy', labelKey: 'arbitrage.cropPaddy' },
+    { id: 'mustard', labelKey: 'arbitrage.cropMustard' },
+    { id: 'soybean', labelKey: 'arbitrage.cropSoybean' },
+    { id: 'cotton', labelKey: 'arbitrage.cropCotton' },
+    { id: 'onion', labelKey: 'arbitrage.cropOnion' },
+  ];
+
   // Arbitrage Spread Calculation
   const basePrice = mandis.find((m) => m.isBase)?.spotPrice || 2840;
 
   const calculatedMandis = mandis.map((m) => {
     const grossSpreadPerQtl = m.spotPrice - basePrice;
-    // Freight cost per quintal = (distance * rate_per_ton_km) / 10 quintals
     const freightCostPerQtl = m.distanceKm === 0 ? 0 : Math.round((m.distanceKm * freightRatePerKm) / 10);
     const mandiCessPerQtl = m.distanceKm === 0 ? 0 : Math.round(m.spotPrice * 0.015);
     const netRealizationPerQtl = grossSpreadPerQtl - freightCostPerQtl - mandiCessPerQtl;
@@ -106,7 +114,7 @@ export default function ArbitragePage() {
         </div>
 
         <div className="flex items-center gap-2 self-start md:self-auto">
-          <span className="text-xs font-bold text-[#78716c]">Freight Cost Rate:</span>
+          <span className="text-xs font-bold text-[#78716c]">{t('arbitrage.freightCostRate')}:</span>
           <span className="text-xs font-extrabold text-[#14532d] bg-[#f5fdf7] border border-[#bbf7d0] px-3 py-1 rounded-xl shadow-2xs">
             ₹{freightRatePerKm} / km / Ton
           </span>
@@ -117,8 +125,8 @@ export default function ArbitragePage() {
         {/* Left Column: Interactive Map */}
         <div className="lg:col-span-6 paper-card p-4 sm:p-5">
           <div className="flex justify-between items-center mb-3 pb-2.5 border-b border-[#f5f2eb]">
-            <h3 className="text-sm font-extrabold text-[#1c1917] font-editorial">Regional APMC Price Spread Map</h3>
-            <span className="text-[11px] font-bold text-[#78716c]">Base: Karnal West</span>
+            <h3 className="text-sm font-extrabold text-[#1c1917] font-editorial">{t('arbitrage.regionalMap')}</h3>
+            <span className="text-[11px] font-bold text-[#78716c]">{t('arbitrage.baseLocation')}</span>
           </div>
 
           <div className="w-full h-[320px] sm:h-[380px] rounded-2xl overflow-hidden border border-[#e7e5e4]">
@@ -142,10 +150,10 @@ export default function ArbitragePage() {
                   <Popup>
                     <div className="font-sans text-xs">
                       <p className="font-extrabold text-[#14532d]">{m.name}</p>
-                      <p>Spot Price: ₹{m.spotPrice}/qtl</p>
-                      <p>Distance: {m.distanceKm} km</p>
+                      <p>{t('arbitrage.popupSpotPrice')}: ₹{m.spotPrice}/qtl</p>
+                      <p>{t('arbitrage.popupDistance')}: {m.distanceKm} km</p>
                       <p className={`font-bold ${m.isProfitable ? 'text-emerald-700' : 'text-slate-600'}`}>
-                        {m.isBase ? 'Base Origin' : `Net Gain: ₹${m.totalNetGain.toLocaleString('en-IN')}`}
+                        {m.isBase ? t('arbitrage.popupBaseOrigin') : `${t('arbitrage.popupNetGain')}: ₹${m.totalNetGain.toLocaleString('en-IN')}`}
                       </p>
                     </div>
                   </Popup>
@@ -159,17 +167,17 @@ export default function ArbitragePage() {
         <div className="lg:col-span-6 space-y-3 sm:space-y-4">
           <div className="paper-card p-4 sm:p-5">
             <h3 className="text-sm font-extrabold text-[#1c1917] font-editorial mb-3 pb-2 border-b border-[#f5f2eb]">
-              Net Realization Matrix (25 Ton Truckload)
+              {t('arbitrage.realizationMatrix')}
             </h3>
 
             <div className="overflow-x-auto no-scrollbar">
               <table className="w-full text-left text-xs min-w-[400px]">
                 <thead>
                   <tr className="border-b border-[#e7e5e4] text-[#78716c] uppercase tracking-wider font-extrabold text-[10px]">
-                    <th className="pb-2">Destination Mandi</th>
-                    <th className="pb-2">Spot</th>
-                    <th className="pb-2">Freight</th>
-                    <th className="pb-2 text-right">Net Gain</th>
+                    <th className="pb-2">{t('arbitrage.destinationMandi')}</th>
+                    <th className="pb-2">{t('arbitrage.spotPrice')}</th>
+                    <th className="pb-2">{t('arbitrage.freightCost')}</th>
+                    <th className="pb-2 text-right">{t('arbitrage.netGain')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#f5f2eb]">
@@ -179,7 +187,7 @@ export default function ArbitragePage() {
                         {m.name}
                         {m.isBase && (
                           <span className="ml-1.5 px-1.5 py-0.2 bg-[#f5f2eb] text-[9px] font-bold text-[#78716c] rounded">
-                            Origin
+                            {t('arbitrage.origin')}
                           </span>
                         )}
                       </td>
@@ -209,16 +217,16 @@ export default function ArbitragePage() {
           <div className="paper-card p-4 border-l-4 border-l-[#14532d] bg-[#f5fdf7] text-xs">
             <h4 className="font-extrabold text-[#14532d] mb-1 flex items-center gap-1.5 font-editorial text-sm">
               <span className="material-symbols-outlined text-[18px]">verified</span>
-              Optimal Route: Khanna Mandi (+₹26,250 Net Gain)
+              {t('arbitrage.optimalRoute')} ({t('arbitrage.optimalRouteGain')})
             </h4>
             <p className="text-[#15803d] leading-relaxed text-[11px] font-medium">
-              Transporting 25 Tons to Khanna Mandi yields a net realization of +₹105/qtl after deducting ₹65/qtl in freight logistics, resulting in a total net gain of +₹26,250 over local Karnal sale.
+              {t('arbitrage.optimalRouteDesc')}
             </p>
           </div>
         </div>
       </div>
 
-      {/* 3-Way Multi-Source Market Verification Table (AgriPulse vs Agmarknet vs e-NAM) */}
+      {/* 3-Way Multi-Source Market Verification Table */}
       <div className="paper-card p-4 sm:p-5 space-y-3">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pb-2 border-b border-[#f5f2eb]">
           <div>
@@ -227,22 +235,22 @@ export default function ArbitragePage() {
               <span>{t('arbitrage.compareGovt')}</span>
             </h3>
             <p className="text-[11px] text-[#78716c]">
-              3-way cross-verification: Private Network Spot vs Agmarknet Physical Modal vs e-NAM Electronic Auction Rates
+              {t('arbitrage.crossVerificationDesc')}
             </p>
           </div>
 
           <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-            {['wheat', 'paddy', 'mustard', 'soybean', 'cotton', 'onion'].map((c) => (
+            {cropKeys.map((c) => (
               <button
-                key={c}
-                onClick={() => setSelectedCrop(c)}
+                key={c.id}
+                onClick={() => setSelectedCrop(c.id)}
                 className={`px-2.5 py-1 rounded-lg text-xs font-bold capitalize transition ${
-                  selectedCrop === c
+                  selectedCrop === c.id
                     ? 'bg-[#14532d] text-white shadow-2xs'
                     : 'bg-[#f5f2eb] text-[#57534e] hover:bg-[#e7e5e4]'
                 }`}
               >
-                {c}
+                {t(c.labelKey)}
               </button>
             ))}
           </div>
@@ -252,13 +260,13 @@ export default function ArbitragePage() {
           <table className="w-full text-left text-xs min-w-[720px]">
             <thead>
               <tr className="border-b border-[#e7e5e4] text-[#78716c] uppercase tracking-wider font-extrabold text-[10px]">
-                <th className="pb-2">APMC Mandi & Source Provenance</th>
+                <th className="pb-2">{t('arbitrage.apmc_source')}</th>
                 <th className="pb-2">🌾 AgriPulse Spot</th>
                 <th className="pb-2">🏛️ {t('arbitrage.govtModal')}</th>
                 <th className="pb-2">📊 {t('arbitrage.enamModal')}</th>
-                <th className="pb-2">Spread (e-NAM vs Agmarknet)</th>
+                <th className="pb-2">{t('arbitrage.enamSpread')}</th>
                 <th className="pb-2">{t('arbitrage.priceDelta')}</th>
-                <th className="pb-2 text-right">Verification Date</th>
+                <th className="pb-2 text-right">{t('arbitrage.verificationDate')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#f5f2eb]">
@@ -315,7 +323,7 @@ export default function ArbitragePage() {
                     </span>
                   </td>
                   <td className="py-2.5 text-right text-[#78716c]">
-                    📅 {row.agmarknet_arrival_date || row.enam_arrival_date || 'Today'}
+                    📅 {row.agmarknet_arrival_date || row.enam_arrival_date || t('common.today')}
                   </td>
                 </tr>
               ))}
@@ -323,16 +331,16 @@ export default function ArbitragePage() {
           </table>
         </div>
 
-        {/* Multi-Source NDSAP & e-NAM Mandatory Attribution Footer */}
+        {/* Attribution Footer */}
         <div className="pt-2 border-t border-[#f5f2eb] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-[10px] text-[#78716c]">
           <div className="flex flex-col gap-0.5">
             <span className="flex items-center gap-1.5">
               <span className="material-symbols-outlined text-[#14532d] text-[15px]">verified</span>
-              <span>Source: Agmarknet (Ministry of Agriculture) & e-NAM (SFAC), Government of India (via data.gov.in)</span>
+              <span>{t('arbitrage.attribution')}</span>
             </span>
           </div>
           <span className="font-semibold bg-[#f5f2eb] px-2 py-0.5 rounded border border-[#e7e5e4] shrink-0">
-            NDSAP Open Government Data
+            {t('arbitrage.ndsapBadge')}
           </span>
         </div>
       </div>

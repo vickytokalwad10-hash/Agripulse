@@ -115,7 +115,7 @@ export default function LoginPage() {
             AgriPulse <span className="text-brand-600">AI</span>
           </h1>
           <p className="text-xs text-slate-500 font-semibold">
-            Supabase Authenticated Agricultural Platform & Escrow Gateway
+            {t('login.platformTagline')}
           </p>
         </div>
 
@@ -173,7 +173,7 @@ export default function LoginPage() {
                 authTab === 'password' ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-400'
               }`}
             >
-              Supabase Password
+              {t('login.supabasePasswordTab')}
             </button>
             <button
               onClick={() => setAuthTab('otp')}
@@ -181,7 +181,7 @@ export default function LoginPage() {
                 authTab === 'otp' ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-400'
               }`}
             >
-              Magic OTP / PIN
+              {t('login.magicOtpTab')}
             </button>
             <button
               onClick={() => setAuthTab('signup')}
@@ -189,7 +189,7 @@ export default function LoginPage() {
                 authTab === 'signup' ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-400'
               }`}
             >
-              Register New Account
+              {t('login.registerTab')}
             </button>
           </div>
 
@@ -197,7 +197,7 @@ export default function LoginPage() {
           {authTab === 'password' && (
             <form onSubmit={handlePasswordLogin} className="space-y-3 text-xs">
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Supabase User Email</label>
+                <label className="block font-bold text-slate-700 mb-1">{t('login.supabaseEmail')}</label>
                 <input
                   type="email"
                   value={email}
@@ -209,7 +209,7 @@ export default function LoginPage() {
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Password</label>
+                <label className="block font-bold text-slate-700 mb-1">{t('login.enterPassword')}</label>
                 <input
                   type="password"
                   value={password}
@@ -225,7 +225,12 @@ export default function LoginPage() {
                 className="w-full py-3 bg-brand-600 hover:bg-brand-700 text-white font-extrabold rounded-xl shadow-glow-green transition active:scale-95 text-xs flex items-center justify-center gap-1.5"
               >
                 <span className="material-symbols-outlined text-[18px]">lock_open</span>
-                {loading ? 'Authenticating Supabase...' : `Sign In as ${selectedRole === 'farmer' ? 'Farmer' : 'Buyer'}`}
+                {loading
+                  ? t('login.authenticating')
+                  : selectedRole === 'farmer'
+                    ? t('login.signInAsFarmer')
+                    : t('login.signInAsBuyer')
+                }
               </button>
             </form>
           )}
@@ -236,7 +241,7 @@ export default function LoginPage() {
               {!otpSent ? (
                 <form onSubmit={handleSendOtp} className="space-y-3">
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">Enter Email for One-Time PIN</label>
+                    <label className="block font-bold text-slate-700 mb-1">{t('login.enterEmailOtp')}</label>
                     <input
                       type="email"
                       value={otpEmail}
@@ -251,13 +256,13 @@ export default function LoginPage() {
                     disabled={loading}
                     className="w-full py-3 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl shadow-xs transition active:scale-95"
                   >
-                    {loading ? 'Sending Code...' : 'Send Magic OTP PIN'}
+                    {loading ? t('login.sendingCode') : t('login.sendMagicOtp')}
                   </button>
                 </form>
               ) : (
                 <form onSubmit={handleVerifyOtp} className="space-y-3">
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">6-Digit Supabase OTP Code</label>
+                    <label className="block font-bold text-slate-700 mb-1">{t('login.sixDigitOtp')}</label>
                     <input
                       type="text"
                       maxLength="6"
@@ -273,7 +278,7 @@ export default function LoginPage() {
                     disabled={loading}
                     className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-xs transition active:scale-95"
                   >
-                    {loading ? 'Verifying...' : 'Verify OTP & Enter'}
+                    {loading ? t('login.verifying') : t('login.verifyOtp')}
                   </button>
                 </form>
               )}
@@ -284,7 +289,7 @@ export default function LoginPage() {
           {authTab === 'signup' && (
             <form onSubmit={handleSignup} className="space-y-2.5 text-xs">
               <div>
-                <label className="block font-bold text-slate-700 mb-0.5">Full Name</label>
+                <label className="block font-bold text-slate-700 mb-0.5">{t('login.fullName')}</label>
                 <input
                   type="text"
                   value={signupName}
@@ -297,7 +302,7 @@ export default function LoginPage() {
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-0.5">Email</label>
+                  <label className="block font-bold text-slate-700 mb-0.5">{t('login.email')}</label>
                   <input
                     type="email"
                     value={signupEmail}
@@ -308,7 +313,7 @@ export default function LoginPage() {
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-0.5">Mobile Phone</label>
+                  <label className="block font-bold text-slate-700 mb-0.5">{t('login.mobilePhone')}</label>
                   <input
                     type="tel"
                     value={signupPhone}
@@ -322,7 +327,7 @@ export default function LoginPage() {
 
               {selectedRole === 'farmer' ? (
                 <div>
-                  <label className="block font-bold text-slate-700 mb-0.5">Village / District</label>
+                  <label className="block font-bold text-slate-700 mb-0.5">{t('login.villageDistrict')}</label>
                   <input
                     type="text"
                     value={signupVillage}
@@ -332,7 +337,7 @@ export default function LoginPage() {
                 </div>
               ) : (
                 <div>
-                  <label className="block font-bold text-slate-700 mb-0.5">Company / Mill Name</label>
+                  <label className="block font-bold text-slate-700 mb-0.5">{t('login.companyName')}</label>
                   <input
                     type="text"
                     value={signupCompany}
@@ -344,7 +349,7 @@ export default function LoginPage() {
               )}
 
               <div>
-                <label className="block font-bold text-slate-700 mb-0.5">Create Password</label>
+                <label className="block font-bold text-slate-700 mb-0.5">{t('login.createPassword')}</label>
                 <input
                   type="password"
                   value={signupPassword}
@@ -359,7 +364,7 @@ export default function LoginPage() {
                 disabled={loading}
                 className="w-full py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl shadow-xs transition active:scale-95 mt-1"
               >
-                {loading ? 'Creating Supabase Account...' : 'Register Profile'}
+                {loading ? t('login.creatingAccount') : t('login.registerProfile')}
               </button>
             </form>
           )}
@@ -367,7 +372,7 @@ export default function LoginPage() {
           {/* 1-Click Fast Sandbox Access */}
           <div className="pt-3 border-t border-slate-100 space-y-2">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block text-center">
-              ⚡ Instant 1-Click Sandbox Credentials
+              {t('login.sandboxCredentials')}
             </span>
             <div className="grid grid-cols-2 gap-2">
               <button
@@ -375,7 +380,7 @@ export default function LoginPage() {
                 onClick={() => handleDemoLogin('farmer')}
                 className="p-2.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl text-left transition active:scale-95"
               >
-                <span className="text-xs font-extrabold text-emerald-900 block">🌾 Farmer Demo</span>
+                <span className="text-xs font-extrabold text-emerald-900 block">{t('login.farmerDemoLabel')}</span>
                 <span className="text-[10px] text-emerald-700 font-medium">Ram Lal (12.5 Ac)</span>
               </button>
 
@@ -384,7 +389,7 @@ export default function LoginPage() {
                 onClick={() => handleDemoLogin('buyer')}
                 className="p-2.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl text-left transition active:scale-95"
               >
-                <span className="text-xs font-extrabold text-blue-900 block">🏢 Buyer Demo</span>
+                <span className="text-xs font-extrabold text-blue-900 block">{t('login.buyerDemoLabel')}</span>
                 <span className="text-[10px] text-blue-700 font-medium">Rajesh (₹75L Limit)</span>
               </button>
             </div>
