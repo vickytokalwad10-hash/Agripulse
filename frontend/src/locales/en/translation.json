@@ -193,7 +193,7 @@
     "speakNow": "Tap mic & ask your farming question",
     "typePlaceholder": "Type your agronomy or mandi question here...",
     "askQuestion": "Ask Question",
-    "quickPrompts": "Recommended Agronomy Questions",
+    "quickPrompts": "Quick Prompts",
     "audioAdvisory": "Listen to Voice Advisory",
     "cropAdvisory": "Crop Health & Nutrition",
     "pestControl": "Organic Pest Control",
@@ -203,7 +203,16 @@
     "sendPrompt": "Send",
     "analyzingAgronomy": "Analyzing agronomy & detecting language...",
     "youFarmer": "You (Farmer)",
-    "switchLanguageChip": "Switch App Language"
+    "switchLanguageChip": "Switch App Language",
+    "domainBadge": "Domain-Restricted Agronomy AI • 11 Indian Languages",
+    "activeAppLanguage": "Active App Language",
+    "suggestedQueries": "Suggested Follow-up Queries",
+    "replyingIn": "Replying in",
+    "welcomeMessage": "Namaste! I am your Kisan Mitra AI Agronomy Copilot. Ask me any question about crops, fertilizers, pest control, mandi rates, or government schemes in your own language.",
+    "dismiss": "Dismiss",
+    "switchConfirm": "Switch Language",
+    "send": "Send Query",
+    "voiceInputTooltip": "Tap to speak in your language"
   },
   "satellite": {
     "title": "Satellite Field Health (Sentinel-2 NDVI)",
