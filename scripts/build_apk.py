@@ -10,6 +10,8 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRONTEND_DIR = os.path.join(PROJECT_ROOT, "frontend")
 ANDROID_DIR = os.path.join(FRONTEND_DIR, "android")
 APK_SRC = os.path.join(ANDROID_DIR, "app", "build", "outputs", "apk", "debug", "app-debug.apk")
+VERSION_JS = os.path.join(FRONTEND_DIR, "src", "config", "version.js")
+BUILD_GRADLE = os.path.join(ANDROID_DIR, "app", "build.gradle")
 
 def get_current_version() -> str:
     """Reads current app version from package.json."""
@@ -17,12 +19,40 @@ def get_current_version() -> str:
     try:
         with open(pkg_path, "r", encoding="utf-8") as f:
             data = json.load(f)
-            return data.get("version", "2.1.0")
+            return data.get("version", "2.8.0")
     except Exception:
-        return "2.1.0"
+        return "2.8.0"
+
+def sync_version_across_app(version: str):
+    """Synchronizes version across package.json, version.js, and Android build.gradle."""
+    # 1. Update version.js
+    os.makedirs(os.path.dirname(VERSION_JS), exist_ok=True)
+    today = datetime.now().strftime("%Y-%m-%d")
+    with open(VERSION_JS, "w", encoding="utf-8") as f:
+        f.write(f"export const APP_VERSION = 'v{version}';\n")
+        f.write(f"export const APP_VERSION_RAW = '{version}';\n")
+        f.write(f"export const BUILD_DATE = '{today}';\n")
+
+    # 2. Update Android build.gradle
+    if os.path.exists(BUILD_GRADLE):
+        with open(BUILD_GRADLE, "r", encoding="utf-8") as f:
+            gradle_content = f.read()
+        
+        # Parse version parts to create numeric versionCode
+        parts = version.split(".")
+        code_num = int(parts[0]) * 100 + int(parts[1]) * 10 + int(parts[2]) if len(parts) == 3 else 12
+        
+        import re
+        gradle_content = re.sub(r'versionCode\s+\d+', f'versionCode {code_num}', gradle_content)
+        gradle_content = re.sub(r'versionName\s+"[^"]+"', f'versionName "{version}"', gradle_content)
+        
+        with open(BUILD_GRADLE, "w", encoding="utf-8") as f:
+            f.write(gradle_content)
 
 def build_apk():
     version = get_current_version()
+    sync_version_across_app(version)
+    
     print(f"🌾 ==========================================================")
     print(f"🌾 Building AgriPulse AI Production APK — Version v{version}")
     print(f"🌾 ==========================================================\n")
@@ -63,24 +93,20 @@ def build_apk():
     
     info_content = f"""🌾 AgriPulse AI — Android Build Information
 ==================================================
-Version:        v{version} (Phase 2 Pro)
-Build Code:     9
+Version:        v{version} (Production)
 Built On:       {build_time}
 File Size:      {size_mb:.2f} MB
 Standard APK:   AgriPulse_AI.apk
 Versioned APK:  AgriPulse_AI_v{version}.apk
 
-Key Features in v{version}:
-1. Startup Lifecycle & Context Provider Hierarchy Fix (Resolves App Startup Issue)
-2. Official Android Adaptive App Icon Set (Foreground + Background + Legacy Densities)
-3. Custom Brand Asset Preparation (1024x1024 Master + Play Store 512 + PWA Web Icons)
-4. Multi-Density Support (mdpi, hdpi, xhdpi, xxhdpi, xxxhdpi) with Safe-Zone Geometry
-5. Multi-Source Government Mandi Integration (Agmarknet Spot & e-NAM Electronic Auction)
-6. 3-Way Source Toggle on Overview (AgriPulse Network / Agmarknet / e-NAM Electronic)
-7. Dynamic Reporting Mandis Telemetry (no hardcoded coverage claims)
-8. 3-Way Cross-Verification Table on Arbitrage Floor (Spot vs Agmarknet vs e-NAM)
-9. Android Hardware & Gesture Back Button Navigation Engine (@capacitor/app)
-10. Unified Multilingual System Across 11 Indian Languages with 100% Key Parity
+Key Features & Updates in v{version}:
+1. Centralized Version Management across App UI, Web, and Native APK
+2. Embedded Hybrid On-Device Agronomy Knowledge Engine in Kisan Mitra Copilot
+3. 100% Multilingual Coverage across 11 Indian Regional Languages + Hinglish
+4. Complete Localization for Voice Copilot (Domain Badges, User Roles, Quick Prompts)
+5. Multi-Source Mandi Integration (Spot Mandi + Agmarknet + e-NAM Live Data)
+6. Dynamic Hardware & Gesture Back Navigation Engine (@capacitor/app)
+7. Production Error Boundary Protection against white screens
 ==================================================
 """
     with open(info_file, "w", encoding="utf-8") as f:
