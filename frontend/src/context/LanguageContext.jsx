@@ -90,16 +90,19 @@ export function LanguageProvider({ children }) {
   }, [language]);
 
   // Date Formatter per Locale
-  const formatDate = useCallback((dateString, options = {}) => {
+  const formatDate = useCallback((dateInput, options = {}) => {
     try {
-      const date = new Date(dateString);
+      const date = dateInput instanceof Date ? dateInput : new Date(dateInput);
+      if (isNaN(date.getTime())) return String(dateInput || '');
       const locale = language === 'en' ? 'en-IN' : `${language}-IN`;
-      return new Intl.DateTimeFormat(locale, {
-        dateStyle: 'medium',
-        ...options
-      }).format(date);
+      const formatOptions = Object.keys(options).length > 0 ? options : { dateStyle: 'medium' };
+      return new Intl.DateTimeFormat(locale, formatOptions).format(date);
     } catch {
-      return dateString;
+      try {
+        return new Date(dateInput).toLocaleDateString();
+      } catch {
+        return String(dateInput || '');
+      }
     }
   }, [language]);
 

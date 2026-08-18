@@ -6,6 +6,7 @@ import { NetworkProvider } from './context/NetworkContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { BackNavigationProvider } from './context/BackNavigationContext';
 import { EscrowProvider } from './context/EscrowContext';
+import ErrorBoundary from './components/ErrorBoundary';
 import TransactionReceiptModal from './components/TransactionReceiptModal';
 import AppLayout from './components/AppLayout';
 
@@ -37,67 +38,69 @@ import PaymentPage from './pages/PaymentPage';
 
 export default function App() {
   return (
-    <AuthProvider>
-      <LanguageProvider>
-        <NetworkProvider>
-          <NotificationProvider>
-            <EscrowProvider>
-              <HashRouter>
-                <BackNavigationProvider>
-                  <Routes>
-                    {/* Main Application Shell */}
-                    <Route path="/" element={<AppLayout />}>
-                      <Route index element={<Navigate to="/overview" replace />} />
-                    
-                      {/* Core Routes */}
-                      <Route path="overview" element={<OverviewPage />} />
-                      <Route path="crop-planning" element={<CropPlanningPage />} />
-                      <Route path="fraud-detection" element={<FraudDetectionPage />} />
-                      <Route path="trust-shield" element={<Navigate to="/fraud-detection" replace />} />
-                      <Route path="marketplace" element={<MarketplacePage />} />
-                      <Route path="copilot" element={<VoiceCopilotPage />} />
-                      <Route path="satellite" element={<SatellitePage />} />
-                      <Route path="weather" element={<WeatherPage />} />
-                      <Route path="simulator" element={<SimulatorPage />} />
-                      <Route path="arbitrage" element={<ArbitragePage />} />
+    <ErrorBoundary>
+      <AuthProvider>
+        <LanguageProvider>
+          <NetworkProvider>
+            <NotificationProvider>
+              <EscrowProvider>
+                <HashRouter>
+                  <BackNavigationProvider>
+                    <Routes>
+                      {/* Main Application Shell */}
+                      <Route path="/" element={<AppLayout />}>
+                        <Route index element={<Navigate to="/overview" replace />} />
                       
-                      {/* Phase 2 New Routes */}
-                      <Route path="schemes" element={<SchemesPage />} />
-                      <Route path="finance" element={<FinancePage />} />
-                      <Route path="diagnose" element={<DiagnosePage />} />
-                      <Route path="irrigation" element={<IrrigationPage />} />
-                      <Route path="rentals" element={<RentalsPage />} />
-                      <Route path="calendar" element={<CalendarPage />} />
-                      <Route path="community" element={<CommunityPage />} />
-                      <Route path="livestock" element={<LivestockPage />} />
-                      
-                      {/* Payment & Escrow */}
-                      <Route path="payment" element={<PaymentPage />} />
-                      
-                      {/* Dashboards & Auth */}
-                      <Route path="farmer-dashboard" element={<OverviewPage />} />
-                      <Route path="buyer-dashboard" element={<BuyerDashboardPage />} />
-                      <Route path="login" element={<LoginPage />} />
-                      
-                      {/* Legacy Aliases */}
-                      <Route path="direct-market" element={<Navigate to="/marketplace" replace />} />
-                      <Route path="heatmap" element={<Navigate to="/satellite" replace />} />
-                      <Route path="what-if" element={<Navigate to="/simulator" replace />} />
-                      <Route path="markets" element={<Navigate to="/arbitrage" replace />} />
-                      <Route path="crop-health" element={<Navigate to="/satellite" replace />} />
-                      <Route path="dashboard/farmer" element={<Navigate to="/farmer-dashboard" replace />} />
-                      <Route path="dashboard/buyer" element={<Navigate to="/buyer-dashboard" replace />} />
-                      
-                      <Route path="*" element={<Navigate to="/overview" replace />} />
-                    </Route>
-                  </Routes>
-                  <TransactionReceiptModal />
-                </BackNavigationProvider>
-              </HashRouter>
-            </EscrowProvider>
-          </NotificationProvider>
-        </NetworkProvider>
-      </LanguageProvider>
-    </AuthProvider>
+                        {/* Core Routes */}
+                        <Route path="overview" element={<OverviewPage />} />
+                        <Route path="crop-planning" element={<CropPlanningPage />} />
+                        <Route path="fraud-detection" element={<FraudDetectionPage />} />
+                        <Route path="trust-shield" element={<Navigate to="/fraud-detection" replace />} />
+                        <Route path="marketplace" element={<MarketplacePage />} />
+                        <Route path="copilot" element={<VoiceCopilotPage />} />
+                        <Route path="satellite" element={<SatellitePage />} />
+                        <Route path="weather" element={<WeatherPage />} />
+                        <Route path="simulator" element={<SimulatorPage />} />
+                        <Route path="arbitrage" element={<ArbitragePage />} />
+                        
+                        {/* Phase 2 New Routes */}
+                        <Route path="schemes" element={<SchemesPage />} />
+                        <Route path="finance" element={<FinancePage />} />
+                        <Route path="diagnose" element={<DiagnosePage />} />
+                        <Route path="irrigation" element={<IrrigationPage />} />
+                        <Route path="rentals" element={<RentalsPage />} />
+                        <Route path="calendar" element={<CalendarPage />} />
+                        <Route path="community" element={<CommunityPage />} />
+                        <Route path="livestock" element={<LivestockPage />} />
+                        
+                        {/* Payment & Escrow */}
+                        <Route path="payment" element={<PaymentPage />} />
+                        
+                        {/* Dashboards & Auth */}
+                        <Route path="farmer-dashboard" element={<OverviewPage />} />
+                        <Route path="buyer-dashboard" element={<BuyerDashboardPage />} />
+                        <Route path="login" element={<LoginPage />} />
+                        
+                        {/* Legacy Aliases */}
+                        <Route path="direct-market" element={<Navigate to="/marketplace" replace />} />
+                        <Route path="heatmap" element={<Navigate to="/satellite" replace />} />
+                        <Route path="what-if" element={<Navigate to="/simulator" replace />} />
+                        <Route path="markets" element={<Navigate to="/arbitrage" replace />} />
+                        <Route path="crop-health" element={<Navigate to="/satellite" replace />} />
+                        <Route path="dashboard/farmer" element={<Navigate to="/farmer-dashboard" replace />} />
+                        <Route path="dashboard/buyer" element={<Navigate to="/buyer-dashboard" replace />} />
+                        
+                        <Route path="*" element={<Navigate to="/overview" replace />} />
+                      </Route>
+                    </Routes>
+                    <TransactionReceiptModal />
+                  </BackNavigationProvider>
+                </HashRouter>
+              </EscrowProvider>
+            </NotificationProvider>
+          </NetworkProvider>
+        </LanguageProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
