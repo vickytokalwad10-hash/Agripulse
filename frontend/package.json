@@ -1,7 +1,7 @@
 {
   "name": "frontend",
   "private": true,
-  "version": "2.9.2",
+  "version": "2.9.3",
   "homepage": "https://vickytokalwad10-hash.github.io/Agripulse",
   "type": "module",
   "scripts": {

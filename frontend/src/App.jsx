@@ -49,7 +49,7 @@ export default function App() {
                     <Routes>
                       {/* Main Application Shell */}
                       <Route path="/" element={<AppLayout />}>
-                        <Route index element={<Navigate to="/overview" replace />} />
+                        <Route index element={<Navigate to="/login" replace />} />
                       
                         {/* Core Routes */}
                         <Route path="overview" element={<OverviewPage />} />

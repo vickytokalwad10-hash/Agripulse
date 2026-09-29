@@ -11,7 +11,7 @@ except ImportError:
 
 logger = logging.getLogger("agripulse.database")
 
-SUPABASE_URL = os.getenv("SUPABASE_URL", "https://agripulse-demo.supabase.co")
+SUPABASE_URL = os.getenv("SUPABASE_URL", "https://sxzklpjmehfmwxahxtov.supabase.co")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.sandbox_anon_key_agripulse_2026")
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/agripulse_ai")
 DB_NAME = "agripulse_ai"

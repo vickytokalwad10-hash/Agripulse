@@ -137,7 +137,7 @@ export default function Sidebar({ isOpen, setIsOpen }) {
             </>
           ) : (
             <>
-              <NavLink to="/auth/farmer/login" style={({ isActive }) => ({
+              <NavLink to="/login" style={({ isActive }) => ({
                 display: 'flex', alignItems: 'center', gap: '10px',
                 padding: '9px 12px', borderRadius: '6px', textDecoration: 'none',
                 background: isActive ? '#FEF3C7' : 'transparent',
@@ -147,7 +147,7 @@ export default function Sidebar({ isOpen, setIsOpen }) {
                 <Sprout size={16} color="#D97706" />
                 <span className="nav-text">{t('farmerPortal').split('(')[0].trim()}</span>
               </NavLink>
-              <NavLink to="/auth/buyer/login" style={({ isActive }) => ({
+              <NavLink to="/login" style={({ isActive }) => ({
                 display: 'flex', alignItems: 'center', gap: '10px',
                 padding: '9px 12px', borderRadius: '6px', textDecoration: 'none',
                 background: isActive ? '#F1F5F9' : 'transparent',

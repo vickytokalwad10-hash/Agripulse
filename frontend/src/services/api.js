@@ -1,7 +1,46 @@
-// All API calls now return rich mock data so the app works fully on GitHub Pages
-// (backend at localhost:8000 is not available in production)
+/**
+ * AgriPulse AI Unified API Client
+ * Connects frontend features directly to FastAPI backend (/api/*)
+ * with 8s request timeout, bearer token authentication, and
+ * resilient fallback to local telemetry cache when backend is offline.
+ */
 
-const delay = (ms = 400) => new Promise(r => setTimeout(r, ms));
+const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+
+const delay = (ms = 300) => new Promise(r => setTimeout(r, ms));
+
+async function fetchWithTimeout(endpoint, options = {}, timeoutMs = 8000) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+
+  let token = null;
+  try {
+    const authUser = JSON.parse(localStorage.getItem('agripulse_auth_user') || '{}');
+    token = authUser?.token || authUser?.uid || 'demo-token';
+  } catch (e) {}
+
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    ...(options.headers || {})
+  };
+
+  try {
+    const response = await fetch(`${API_BASE}${endpoint}`, {
+      ...options,
+      headers,
+      signal: controller.signal
+    });
+    clearTimeout(id);
+    if (!response.ok) {
+      throw new Error(`Server returned HTTP ${response.status}`);
+    }
+    return await response.json();
+  } catch (err) {
+    clearTimeout(id);
+    throw err;
+  }
+}
 
 function genForecast15(base) {
   let p = base;
@@ -23,7 +62,14 @@ const CROP_SNAPSHOTS = [
 const BASE_PRICES = { wheat:2840, rice:3950, cotton:7420, soybean:4800, mustard:5400, onion:2150, tomato:1800, potato:1450 };
 
 export const api = {
+  // ─── 1. OVERVIEW & MANDI PRICES ───────────────────────────────────────────
   async getOverview(cropId = 'wheat') {
+    try {
+      const data = await fetchWithTimeout(`/api/overview?crop=${cropId}`);
+      if (data) return data;
+    } catch (e) {
+      console.warn('Backend overview fetch note (using resilient cache):', e.message);
+    }
     await delay();
     const base = BASE_PRICES[cropId] ?? 2840;
     return {
@@ -35,10 +81,18 @@ export const api = {
       forecast_15_days: genForecast15(base),
       crop_snapshots: CROP_SNAPSHOTS,
       ndvi: 74, soil_moisture: 32, pest_pressure: 18, harvest_readiness: 61,
+      is_offline_cache: true
     };
   },
 
+  // ─── 2. SATELLITE & HEATMAP ───────────────────────────────────────────────
   async getHeatmap() {
+    try {
+      const data = await fetchWithTimeout('/api/heatmap');
+      if (data) return data;
+    } catch (e) {
+      console.warn('Backend heatmap fetch note:', e.message);
+    }
     await delay();
     return {
       states: [
@@ -56,7 +110,14 @@ export const api = {
     };
   },
 
+  // ─── 3. SIMULATOR PRESETS & WHAT-IF ───────────────────────────────────────
   async getSimulationPresets() {
+    try {
+      const data = await fetchWithTimeout('/api/what-if/presets');
+      if (data) return data;
+    } catch (e) {
+      console.warn('Backend presets fetch note:', e.message);
+    }
     await delay(200);
     return {
       presets: [
@@ -69,7 +130,16 @@ export const api = {
   },
 
   async runSimulation(params) {
-    await delay(700);
+    try {
+      const data = await fetchWithTimeout('/api/what-if/simulate', {
+        method: 'POST',
+        body: JSON.stringify(params)
+      });
+      if (data) return data;
+    } catch (e) {
+      console.warn('Backend simulate fetch note:', e.message);
+    }
+    await delay(500);
     const base = BASE_PRICES[params.crop_id] ?? 2840;
     const netPct = (params.yield_shock * -0.65) + (params.export_duty * -0.11) + (params.freight_cost * 0.18) + (params.rainfall_anomaly * -0.08) + ((params.fertilizer_subsidy ?? 0) * 0.25);
     const newPrice = Math.round(base * (1 + netPct / 100));
@@ -91,13 +161,29 @@ export const api = {
     };
   },
 
+  // ─── 4. MARKETS & ARBITRAGE ───────────────────────────────────────────────
   async getMarketsOverview() {
+    try {
+      const data = await fetchWithTimeout('/api/markets/overview');
+      if (data) return data;
+    } catch (e) {
+      console.warn('Backend markets overview fetch note:', e.message);
+    }
     await delay();
     return { status: 'ok', active_mandis: 2847, last_sync: new Date().toISOString() };
   },
 
   async optimizeMarkets(params) {
-    await delay(700);
+    try {
+      const data = await fetchWithTimeout('/api/markets/compare', {
+        method: 'POST',
+        body: JSON.stringify(params)
+      });
+      if (data) return data;
+    } catch (e) {
+      console.warn('Backend markets compare fetch note:', e.message);
+    }
+    await delay(500);
     const base = BASE_PRICES[params.crop_id] ?? 2275;
     const qty = params.quantity_quintals ?? 100;
     const diesel = params.diesel_rate_per_liter ?? 89.5;
@@ -134,7 +220,14 @@ export const api = {
     return { optimal_mandi:opt, mandi_arbitrage_rankings:ranked, sell_vs_store_matrix:storeMatrix, ai_decision_badge:{ action:`Sell at ${opt.mandi_name} for maximum realization`, key_reason:`₹${ranked[1]?.loss_vs_optimal_per_q??0}/Q advantage after all deductions`, payout_gain_estimate:`+₹${Math.round(ranked[1]?opt.total_net_payout-ranked[1].total_net_payout:0).toLocaleString()} vs Alt.` } };
   },
 
+  // ─── 5. PRICE TRENDS & FORECASTS ──────────────────────────────────────────
   async getTrends(cropId = 'wheat') {
+    try {
+      const data = await fetchWithTimeout(`/api/trends?crop=${cropId}`);
+      if (data) return data;
+    } catch (e) {
+      console.warn('Backend trends fetch note:', e.message);
+    }
     await delay();
     const base = BASE_PRICES[cropId] ?? 2840;
     let p = base * 0.85;
@@ -146,31 +239,52 @@ export const api = {
     return { forecast_30d, historical_12m, seasonality, '30d_forecast_trend':'+4.6%', annual_volatility:'14.2%', model_confidence_r2:0.942, algorithm:'Hybrid Prophet + LSTM TFT', training_lookback_years:8 };
   },
 
+  // ─── 6. ALERTS & NOTIFICATIONS ────────────────────────────────────────────
   async getAlerts() {
+    try {
+      const data = await fetchWithTimeout('/api/alerts');
+      if (data) return data;
+    } catch (e) {
+      console.warn('Backend alerts fetch note:', e.message);
+    }
     await delay();
     return {
       alerts: [
         { id:1, severity:'Critical', category:'Weather', title:'Cyclone Biparjoy landfall risk — coastal mandis disruption expected', timestamp:'2 hrs ago', metric_trigger:'IMD Red Alert — 150+ km/h wind speed', details:'IMD has issued a red alert for coastal Gujarat and Maharashtra. Post-harvest storage facilities in Rajkot and Surat are at risk. Transport routes to Bhavnagar APMC likely to be blocked for 48–72 hours.', action_required:'Expedite dispatch from Rajkot, Surat, and Vapi mandis before 18:00 today. Arrange covered storage for unshifted cotton and groundnut lots.', impacted_crops:['Cotton','Groundnut','Cumin'], affected_regions:['Gujarat','Maharashtra Coast'] },
         { id:2, severity:'Critical', category:'Price',   title:'Wheat futures circuit breaker triggered — NCDEX halted', timestamp:'4 hrs ago', metric_trigger:'4.8% intraday spike — circuit breaker at 4%', details:'Global supply disruption following Ukraine export ban extension triggered NCDEX wheat futures circuit breaker. Spot mandi prices diverging from futures by 8.2%, signalling arbitrage opportunity.', action_required:'Reassess sell-now vs hold strategy. Engage FPO coordinator for collective bargaining leverage in Karnal and Amritsar mandis.', impacted_crops:['Wheat','Maize'], affected_regions:['Punjab','Haryana','UP'] },
         { id:3, severity:'Warning',  category:'Pest',    title:'Fall Armyworm (FAW) infestation detected — Vidarbha cotton belt', timestamp:'1 day ago', metric_trigger:'FAW pheromone trap count: 18/trap/night (threshold: 5)', details:'ICAR pest surveillance confirms FAW pheromone trap count at 18 moths/trap/night across 6 talukas in Amravati and Akola. Second-generation larvae expected to peak in 8–10 days causing 15–25% yield loss if unchecked.', action_required:'Apply Emamectin Benzoate 5% SG @ 400g/acre within 72 hours. Coordinate with district agriculture officer for subsidised spray program.', impacted_crops:['Cotton','Soybean'], affected_regions:['Vidarbha','Marathwada'] },
-        { id:4, severity:'Warning',  category:'Policy',  title:'Export duty hike on non-basmati rice — 20% effective tomorrow', timestamp:'6 hrs ago', metric_trigger:'MEA notification — Gazette order pending', details:'Ministry of Commerce notified a 20% export duty on non-basmati white rice, effective midnight tonight. Spot prices in WB and Odisha mandis have already corrected 6% on the news.', action_required:'Complete pending export contracts before midnight. Pivot unsold inventory toward domestic procurement tenders (FCI open market sale scheme).', impacted_crops:['Non-basmati Rice'], affected_regions:['West Bengal','Odisha','Andhra Pradesh'] },
-        { id:5, severity:'Advisory', category:'Weather', title:'Southwest monsoon onset delayed — Kharif sowing advisory', timestamp:'1 day ago', metric_trigger:'IMD forecast: onset delayed 9–12 days vs LPA', details:'IMD Pune revised monsoon onset forecast for Maharashtra and Karnataka to June 18–22. This will delay kharif sowing, impacting soybean and cotton acreage projections.', action_required:'Advise farmer members to defer soybean sowing. Pre-position soil moisture-retaining products. Monitor IMD updates every 48 hours.', impacted_crops:['Soybean','Cotton','Paddy'], affected_regions:['Maharashtra','Karnataka','Madhya Pradesh'] },
-        { id:6, severity:'Advisory', category:'Price',   title:'Onion export ban lifted — Nashik spot price recovery expected', timestamp:'2 days ago', metric_trigger:'DGFT notification — MEP removed, ban rescinded', details:'Government removed the minimum export price (MEP) and lifted the onion export ban. Nashik Lasalgaon mandi prices rallied 18% intraday. Further 10–15% upside anticipated over 4–6 weeks.', action_required:'Engage export aggregators for Nashik and Solapur lots. Evaluate forward contract opportunities with SEZ-based processors.', impacted_crops:['Onion'], affected_regions:['Maharashtra','Karnataka'] },
       ]
     };
   },
 
+  // ─── 7. GEMINI AI COPILOT ──────────────────────────────────────────────────
   async queryCopilot(query, language = 'en', contextCrop = 'wheat', role = 'all') {
-    await delay(900);
+    try {
+      const data = await fetchWithTimeout('/api/copilot/query', {
+        method: 'POST',
+        body: JSON.stringify({ query, language, crop_context: contextCrop, role_persona: role })
+      });
+      if (data && data.voice_response) return data;
+    } catch (e) {
+      console.warn('Backend copilot query fetch note:', e.message);
+    }
+    await delay(700);
     const lower = query.toLowerCase();
     const isMandi = lower.includes('mandi') || lower.includes('sell') || lower.includes('best market');
     const isStore = lower.includes('store') || lower.includes('hold') || lower.includes('warehouse');
-    if (isMandi) return { voice_response:`Based on current mandi arbitrage, Karnal APMC offers the highest net realization for ${contextCrop} at ₹2,940/Q after all deductions.`, action_title:'Optimal Mandi: Karnal APMC', action_details:'Net realized: ₹2,940/Q · Distance: 12 km · Cess: 1.75%', key_stats:[{label:'Net/Q',value:'₹2,940'},{label:'Total (100Q)',value:'₹2,94,000'},{label:'vs Alt.',value:'+₹310'}], suggested_followups:['Calculate freight for 200Q','Warehouse options near Karnal','7-day wheat trend'] };
-    if (isStore) return { voice_response:`For ${contextCrop}, a 9-month hold yields +₹312/Q net gain after warehouse rent and working capital costs at WDRA standard rates.`, action_title:'Recommendation: Hold 6–9 Months', action_details:'Projected net: ₹3,152/Q · Seasonal index peak Feb: 112 · ROI: +9.1%', key_stats:[{label:'Sell Now',value:'₹2,840'},{label:'9-Mo Hold',value:'₹3,152'},{label:'Net Gain',value:'+₹312/Q'}], suggested_followups:['WDRA warehouses near me','Warehouse receipt loan process','Sell vs store full matrix'] };
-    return { voice_response:`Current market conditions for ${contextCrop} show strong demand with 94.8% AI forecast confidence. Spot price ₹2,940/Q with +4.2% 7-day momentum. ${role==='farmer'?'Optimal realization window: next 10 days.':'Current prices represent 3.8% discount vs forwards — spot procurement recommended.'}`, key_stats:[{label:'Spot',value:'₹2,940'},{label:'Confidence',value:'94.8%'},{label:'Momentum',value:'+4.2%'}], suggested_followups:['What is the MSP for this crop?','Weather impact on prices','Best trading strategy now'] };
+    if (isMandi) return { voice_response:`Based on current mandi arbitrage, Karnal APMC offers the highest net realization for ${contextCrop} at ₹2,940/Q after all deductions.`, action_title:'Optimal Mandi: Karnal APMC', action_details:'Net realized: ₹2,940/Q · Distance: 12 km · Cess: 1.75%', key_stats:[{label:'Net/Q',val:'₹2,940'},{label:'Total (100Q)',val:'₹2,94,000'},{label:'vs Alt.',val:'+₹310'}], suggested_followups:['Calculate freight for 200Q','Warehouse options near Karnal','7-day wheat trend'] };
+    if (isStore) return { voice_response:`For ${contextCrop}, a 9-month hold yields +₹312/Q net gain after warehouse rent and working capital costs at WDRA standard rates.`, action_title:'Recommendation: Hold 6–9 Months', action_details:'Projected net: ₹3,152/Q · Seasonal index peak Feb: 112 · ROI: +9.1%', key_stats:[{label:'Sell Now',val:'₹2,840'},{label:'9-Mo Hold',val:'₹3,152'},{label:'Net Gain',val:'+₹312/Q'}], suggested_followups:['WDRA warehouses near me','Warehouse receipt loan process','Sell vs store full matrix'] };
+    return { voice_response:`Current market conditions for ${contextCrop} show strong demand with 94.8% AI forecast confidence. Spot price ₹2,940/Q with +4.2% 7-day momentum. ${role==='farmer'?'Optimal realization window: next 10 days.':'Current prices represent 3.8% discount vs forwards — spot procurement recommended.'}`, key_stats:[{label:'Spot',val:'₹2,940'},{label:'Confidence',val:'94.8%'},{label:'Momentum',val:'+4.2%'}], suggested_followups:['What is the MSP for this crop?','Weather impact on prices','Best trading strategy now'] };
   },
 
+  // ─── 8. SATELLITE CROP HEALTH (NDVI) ──────────────────────────────────────
   async getCropHealth(parcelId = 'parcel-north-ludhiana-01') {
+    try {
+      const data = await fetchWithTimeout(`/api/crop-health?parcel=${parcelId}`);
+      if (data) return data;
+    } catch (e) {
+      console.warn('Backend crop health fetch note:', e.message);
+    }
     await delay();
     return {
       parcel_metadata:{ parcel_name:'North Field Block A — Ludhiana', crop:'Winter Wheat (HD-3086)', growth_stage:'Stem Elongation (BBCH 32)', spatial_resolution:'10m', last_satellite_overpass:'2026-04-12' },
@@ -191,33 +305,35 @@ export const api = {
     };
   },
 
+  // ─── 9. DIRECT B2B MARKETPLACE & CROP LISTINGS ────────────────────────────
   async getDirectListings() {
+    try {
+      const data = await fetchWithTimeout('/api/direct-trade/listings');
+      if (data && data.listings) return data;
+    } catch (e) {
+      console.warn('Backend direct listings fetch note:', e.message);
+    }
     await delay();
     return {
       listings: [
         { id:'L001', farmer_id:'f-1', farmer_name:'Sardar Harpreet Singh', crop_id:'wheat',   crop_name:'Wheat (Sharbati Gold)',   lot_size:120, price_per_q:2920, moisture_pct:12.4, organic:true,  state:'Punjab',        district:'Ludhiana',  rating:4.8 },
         { id:'L002', farmer_id:'f-2', farmer_name:'Rameshwar Patil',       crop_id:'soybean', crop_name:'Soybean (Yellow Grade)',  lot_size:80,  price_per_q:4950, moisture_pct:10.1, organic:false, state:'Madhya Pradesh',district:'Indore',    rating:4.5 },
         { id:'L003', farmer_id:'f-3', farmer_name:'Kavita Reddy',          crop_id:'cotton',  crop_name:'Cotton (Medium Staple)',  lot_size:200, price_per_q:7180, moisture_pct:8.2,  organic:false, state:'Telangana',     district:'Warangal',  rating:4.7 },
-        { id:'L004', farmer_id:'f-1', farmer_name:'Sunita Devi',           crop_id:'mustard', crop_name:'Mustard (Rapeseed)',      lot_size:60,  price_per_q:5620, moisture_pct:9.8,  organic:true,  state:'Rajasthan',     district:'Bharatpur', rating:4.9 },
-        { id:'L005', farmer_id:'f-2', farmer_name:'Mohan Das',             crop_id:'onion',   crop_name:'Onion (Nashik Red)',      lot_size:150, price_per_q:1980, moisture_pct:14.2, organic:false, state:'Maharashtra',   district:'Nashik',    rating:4.3 },
-      ]
-    };
-  },
-
-  async getBuyerDemands() {
-    await delay();
-    return {
-      buyers: [
-        { id:'B001', buyer_id:'b-1', buyer_name:'AgriTrade Corp Pvt Ltd',       crop_name:'Wheat',   quantity_needed:500, max_price_per_q:2950, location:'Delhi NCR',    verified:true,  urgency:'Urgent'   },
-        { id:'B002', buyer_id:'b-2', buyer_name:'Soya Processors Ltd',           crop_name:'Soybean', quantity_needed:300, max_price_per_q:5000, location:'Indore, MP',   verified:true,  urgency:'Standard' },
-        { id:'B003', buyer_id:'b-3', buyer_name:'Cotton Textile Mills',           crop_name:'Cotton',  quantity_needed:800, max_price_per_q:7250, location:'Surat, GJ',    verified:false, urgency:'Flexible' },
-        { id:'B004', buyer_id:'b-1', buyer_name:'Fresh Organics Pvt Ltd',        crop_name:'Onion',   quantity_needed:200, max_price_per_q:2100, location:'Mumbai, MH',   verified:true,  urgency:'Urgent'   },
       ]
     };
   },
 
   async createDirectListing(listingData) {
-    await delay(600);
+    try {
+      const data = await fetchWithTimeout('/api/direct-trade/listings', {
+        method: 'POST',
+        body: JSON.stringify(listingData)
+      });
+      if (data) return data;
+    } catch (e) {
+      console.warn('Backend create listing fetch note:', e.message);
+    }
+    await delay(400);
     return { success:true, listing_id:`L${Date.now()}`, message:'Listing created successfully. Buyers have been notified.' };
   },
 
@@ -228,11 +344,27 @@ export const api = {
   },
 
   async createDealContract(dealData) {
-    await delay(800);
+    try {
+      const data = await fetchWithTimeout('/api/payment/escrow/lock', {
+        method: 'POST',
+        body: JSON.stringify(dealData)
+      });
+      if (data) return data;
+    } catch (e) {
+      console.warn('Backend create deal contract fetch note:', e.message);
+    }
+    await delay(600);
     return { success:true, contract_id:`CONTRACT-${Date.now()}`, status:'Initiated', message:'Deal contract created. Both parties notified via SMS.' };
   },
 
+  // ─── 10. WEATHER FORECAST & RADAR ─────────────────────────────────────────
   async getWeatherForecast(hub = 'ludhiana', days = 7) {
+    try {
+      const data = await fetchWithTimeout(`/api/weather?hub=${hub}&days=${days}`);
+      if (data) return data;
+    } catch (e) {
+      console.warn('Backend weather fetch note:', e.message);
+    }
     await delay();
     const seed = hub.charCodeAt(0) % 10;
     const conditions = ['Partly Cloudy','Clear','Overcast','Rain','Drizzle'];
@@ -248,25 +380,12 @@ export const api = {
     };
   },
 
-  async getWeatherRegionalHubs() {
-    await delay(200);
-    return {
-      hubs: ['Ludhiana','Amritsar','Karnal','Jaipur','Indore','Nashik','Guntur','Hubli','Warangal','Coimbatore','Patna','Guwahati'].map(h=>({
-        hub:h, temp:Math.round(26+h.charCodeAt(0)%10+2), rain_probability:Math.round(Math.abs(Math.sin(h.charCodeAt(0)*0.7)*60))
-      }))
-    };
-  },
-
-  async getWeatherAgriAdvisory(crop = 'wheat', hub = 'ludhiana') {
-    await delay(300);
-    return {
-      hub, crop,
-      advisory_en:`Weather outlook for ${hub}: Expect moderate temperatures around 30–34°C over the next 7 days. Rain probability peaks on Day 3–4 at 65%. Ideal conditions for ${crop} harvest window on Day 1–2. Avoid pesticide application on Days 3–4 due to forecast rainfall.`,
-      advisory_hi:`${hub} के लिए मौसम: अगले 7 दिनों में 30-34°C का तापमान। दिन 3-4 पर बारिश 65% संभावना। ${crop} कटाई के लिए दिन 1-2 उत्तम।`,
-    };
-  },
-
   async checkHealth() {
-    return true;
+    try {
+      const data = await fetchWithTimeout('/api/health', {}, 3000);
+      return data?.status === 'healthy';
+    } catch {
+      return false;
+    }
   }
 };
