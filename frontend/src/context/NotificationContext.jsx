@@ -16,6 +16,10 @@ export function NotificationProvider({ children }) {
     enable_price_alerts: true,
     enable_scheme_alerts: true,
     enable_marketplace_alerts: true,
+    enable_sms_alerts: true,
+    enable_push_alerts: true,
+    recipient_mobile: '+91 98765 43210',
+    sms_language: 'hi',
     price_change_threshold: 5.0,
     rain_probability_threshold: 70,
     watchlist_crops: ['wheat', 'paddy', 'mustard', 'soybean', 'cotton'],
@@ -27,6 +31,7 @@ export function NotificationProvider({ children }) {
   useEffect(() => {
     fetchNotifications();
     fetchSettings();
+    requestPushPermission();
 
     // Poll for real-time alerts every 20 seconds
     const interval = setInterval(() => {
@@ -35,6 +40,16 @@ export function NotificationProvider({ children }) {
 
     return () => clearInterval(interval);
   }, [userId]);
+
+  const requestPushPermission = async () => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      try {
+        await Notification.requestPermission();
+      } catch (e) {
+        console.warn('Web Push permission note:', e);
+      }
+    }
+  };
 
   const fetchNotifications = async (isBackgroundPoll = false) => {
     try {
@@ -74,6 +89,20 @@ export function NotificationProvider({ children }) {
 
   const showToast = (item) => {
     setUrgentToast(item);
+
+    // Browser Web Push Notification
+    if ('Notification' in window && Notification.permission === 'granted' && settings.enable_push_alerts !== false) {
+      try {
+        new Notification(`AgriPulse 🌾 ${item.title}`, {
+          body: item.desc,
+          icon: '/favicon.ico',
+          tag: item.id
+        });
+      } catch (e) {
+        console.warn('Native notification note:', e);
+      }
+    }
+
     setTimeout(() => {
       setUrgentToast((prev) => (prev?.id === item.id ? null : prev));
     }, 6000);
@@ -81,6 +110,27 @@ export function NotificationProvider({ children }) {
 
   const dismissToast = () => {
     setUrgentToast(null);
+  };
+
+  const sendSmsAlert = async (customPayload = {}) => {
+    try {
+      const bodyPayload = {
+        recipient_mobile: customPayload.recipient_mobile || settings.recipient_mobile || '+91 98765 43210',
+        message_type: customPayload.message_type || 'Weather_Alert',
+        language: settings.sms_language || 'hi',
+        crop_name: customPayload.crop_name || 'Wheat',
+        custom_text: customPayload.custom_text || null
+      };
+      const res = await fetch('http://127.0.0.1:8000/api/sms/send-alert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bodyPayload)
+      });
+      return await res.json();
+    } catch (e) {
+      console.warn('SMS dispatch note:', e);
+      return { status: 'error', message: e.message };
+    }
   };
 
   const markAsRead = async (notifId) => {
@@ -168,7 +218,9 @@ export function NotificationProvider({ children }) {
         markAllAsRead,
         settings,
         updateSettings,
+        sendSmsAlert,
         triggerSimulation,
+        requestPushPermission,
         isDrawerOpen,
         setIsDrawerOpen,
         isSettingsOpen,

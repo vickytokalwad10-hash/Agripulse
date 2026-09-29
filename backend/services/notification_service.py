@@ -34,6 +34,10 @@ class NotificationSettings(BaseModel):
     enable_price_alerts: bool = True
     enable_scheme_alerts: bool = True
     enable_marketplace_alerts: bool = True
+    enable_sms_alerts: bool = True
+    enable_push_alerts: bool = True
+    recipient_mobile: str = "+91 98765 43210"
+    sms_language: str = "hi"
     price_change_threshold: float = 5.0  # percentage +/- 5%
     rain_probability_threshold: int = 70  # percentage > 70%
     watchlist_crops: List[str] = Field(default_factory=lambda: ["wheat", "paddy", "mustard", "soybean", "cotton"])
@@ -182,8 +186,9 @@ class NotificationRepository:
         self.notifications[user_id].insert(0, notification)
         logger.info(f"🔔 Added notification: {notification.title} for user {user_id}")
         
-        # Trigger mock FCM Push
+        # Trigger mock FCM Push & SMS Dispatch
         self._dispatch_fcm_push(notification)
+        self._dispatch_sms_alert(notification)
         return notification
 
     def _dispatch_fcm_push(self, notification: NotificationItem):
@@ -203,6 +208,24 @@ class NotificationRepository:
             }
         }
         logger.info(f"📱 FCM Push Dispatched: {json.dumps(fcm_payload)}")
+
+    def _dispatch_sms_alert(self, notification: NotificationItem):
+        """Simulates/dispatches DLT-compliant Indian Telecom SMS payload to farmer's mobile."""
+        settings = self.get_user_settings(notification.user_id)
+        if not settings.enable_sms_alerts:
+            logger.info(f"SMS alert skipped: disabled by user {notification.user_id}")
+            return
+
+        sms_payload = {
+            "recipient": settings.recipient_mobile,
+            "message_id": f"SMS-DLT-{int(datetime.now().timestamp())}",
+            "dlt_template_id": "1407161234567890",
+            "sender_header": "AGRPUL",
+            "content": f"AgriPulse {notification.category.upper()} Alert: {notification.title} - {notification.desc}",
+            "delivery_status": "Delivered to Carrier via DLT Gateway",
+            "sent_at": datetime.now().strftime("%d-%m-%Y %I:%M %p")
+        }
+        logger.info(f"📲 DLT SMS Alert Dispatched: {json.dumps(sms_payload)}")
 
     # ========================================================================
     # TRIGGER ENGINES WITH COOLDOWN AND DEDUPLICATION

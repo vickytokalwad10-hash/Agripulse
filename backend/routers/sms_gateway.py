@@ -25,6 +25,8 @@ class SMSAlertRequest(BaseModel):
     crop_name: Optional[str] = "Wheat"
     custom_text: Optional[str] = None
 
+sms_log_history = []
+
 @router.post("/send-alert")
 def send_sms_alert(req: SMSAlertRequest):
     """
@@ -36,24 +38,40 @@ def send_sms_alert(req: SMSAlertRequest):
     if req.custom_text:
         sms_content = req.custom_text
     elif req.message_type == "Mandi_Price":
-        sms_content = f"AgriPulse Mandi Alert: Karnal Mandi Sharbati Wheat rate is Rs 2,840/qtl on {timestamp}. ITC active demand. Reply 1 for more rates."
+        sms_content = f"AgriPulse Mandi Alert: Karnal Mandi Sharbati {req.crop_name or 'Wheat'} rate is Rs 2,840/qtl on {timestamp}. ITC active demand. Reply 1 for more rates."
     elif req.message_type == "Weather_Alert":
-        sms_content = f"AgriPulse Mausam Alert: 45mm rainfall forecast in next 48h. Defer pesticide spraying. Reply 2 for crop advice."
+        sms_content = f"AgriPulse Mausam Alert: Heavy rainfall forecast in next 48h. Defer pesticide spraying. Reply 2 for crop advice."
     elif req.message_type == "Scheme_Deadline":
         sms_content = f"PMFBY Alert: Last date to enroll Rabi crop insurance is 31 Dec. Contact nearest CSC center or bank branch."
     else:
         sms_content = f"AgriPulse Farmer Update: Recommended CRI irrigation due in 3 days for field parcel."
 
+    details = {
+        "recipient": req.recipient_mobile,
+        "message_id": f"SMS-DLT-{int(datetime.now().timestamp())}",
+        "dlt_template_id": "1407161234567890",
+        "sender_header": "AGRPUL",
+        "content": sms_content,
+        "delivery_status": "Delivered to Carrier",
+        "sent_at": timestamp
+    }
+    
+    sms_log_history.insert(0, details)
+
     return {
         "status": "success",
         "gateway": "Simulated DLT SMS Service (Swap with Twilio/Gupshup API in production)",
-        "dispatch_details": {
-            "recipient": req.recipient_mobile,
-            "message_id": f"SMS-DLT-{int(datetime.now().timestamp())}",
-            "dlt_template_id": "1407161234567890",
-            "sender_header": "AGRPUL",
-            "content": sms_content,
-            "delivery_status": "Delivered to Carrier",
-            "sent_at": timestamp
-        }
+        "dispatch_details": details
     }
+
+@router.get("/logs")
+def get_sms_logs():
+    """
+    Retrieve history of dispatched SMS alerts.
+    """
+    return {
+        "status": "success",
+        "total": len(sms_log_history),
+        "logs": sms_log_history
+    }
+

@@ -13,14 +13,29 @@ export default function NotificationDrawer() {
     markAllAsRead,
     isDrawerOpen,
     setIsDrawerOpen,
-    setIsSettingsOpen
+    setIsSettingsOpen,
+    sendSmsAlert
   } = useNotifications();
 
   const navigate = useNavigate();
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [expandedId, setExpandedId] = useState(null);
+  const [smsSentId, setSmsSentId] = useState(null);
 
   if (!isDrawerOpen) return null;
+
+  const handleSendSmsSingle = async (notif, e) => {
+    e.stopPropagation();
+    const res = await sendSmsAlert({
+      message_type: notif.category === 'weather' ? 'Weather_Alert' : notif.category === 'price' ? 'Mandi_Price' : 'Scheme_Deadline',
+      crop_name: notif.metadata?.crop || 'Crop',
+      custom_text: `AgriPulse Alert: ${notif.title} - ${notif.desc}`
+    });
+    if (res && res.status === 'success') {
+      setSmsSentId(notif.id);
+      setTimeout(() => setSmsSentId(null), 4000);
+    }
+  };
 
   const categories = [
     { key: 'all', label: `🌐 ${t('notifications.all')}`, count: categoryCounts.all || notifications.length },
@@ -214,12 +229,25 @@ export default function NotificationDrawer() {
                     {n.desc}
                   </p>
 
-                  {/* Action Link button */}
-                  {n.action_route && (
-                    <div className="mt-3 pt-2 border-t border-[#f5f2eb] flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-[#78716c]">
-                        {n.action_label || 'Take Action'}
-                      </span>
+                  {/* Action Link & SMS button */}
+                  <div className="mt-3 pt-2 border-t border-[#f5f2eb] flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={(e) => handleSendSmsSingle(n, e)}
+                        className="px-2 py-0.5 bg-[#faf8f5] hover:bg-[#14532d] hover:text-white text-[#78716c] border border-[#e7e5e4] text-[10px] font-bold rounded-md transition flex items-center gap-1 active:scale-98"
+                        title="Send SMS to Farmer Mobile"
+                      >
+                        <span>📱 SMS Alert</span>
+                      </button>
+                      {smsSentId === n.id && (
+                        <span className="text-[9px] text-emerald-700 font-extrabold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 animate-in fade-in">
+                          ✓ SMS Sent!
+                        </span>
+                      )}
+                    </div>
+
+                    {n.action_route && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -230,8 +258,8 @@ export default function NotificationDrawer() {
                         <span>View</span>
                         <span className="material-symbols-outlined text-[13px]">arrow_forward</span>
                       </button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               );
             })

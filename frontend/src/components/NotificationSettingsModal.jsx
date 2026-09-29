@@ -3,9 +3,20 @@ import { useLanguage } from '../context/LanguageContext';
 import { useNotifications } from '../context/NotificationContext';
 
 export default function NotificationSettingsModal() {
-  const { settings, updateSettings, isSettingsOpen, setIsSettingsOpen, triggerSimulation } = useNotifications();
+  const { t } = useLanguage();
+  const {
+    settings,
+    updateSettings,
+    isSettingsOpen,
+    setIsSettingsOpen,
+    triggerSimulation,
+    sendSmsAlert,
+    requestPushPermission
+  } = useNotifications();
+
   const [formState, setFormState] = useState({ ...settings });
   const [simulating, setSimulating] = useState(false);
+  const [smsResult, setSmsResult] = useState(null);
 
   if (!isSettingsOpen) return null;
 
@@ -37,8 +48,30 @@ export default function NotificationSettingsModal() {
 
   const handleTestTrigger = async (type) => {
     setSimulating(true);
+    setSmsResult(null);
     await triggerSimulation(type);
     setSimulating(false);
+  };
+
+  const handleTestSms = async () => {
+    setSimulating(true);
+    setSmsResult(null);
+    const res = await sendSmsAlert({
+      recipient_mobile: formState.recipient_mobile || '+91 98765 43210',
+      message_type: 'Weather_Alert',
+      crop_name: 'Wheat',
+      custom_text: `AgriPulse SMS Test: Verified alert dispatch to ${formState.recipient_mobile || '+91 98765 43210'}. DLT Gateway Active.`
+    });
+    setSimulating(false);
+    if (res && res.status === 'success') {
+      setSmsResult(`✅ SMS Sent! ID: ${res.dispatch_details?.message_id} (${res.dispatch_details?.delivery_status})`);
+    } else {
+      setSmsResult('❌ Failed to dispatch SMS');
+    }
+  };
+
+  const handlePushPermissionClick = async () => {
+    await requestPushPermission();
   };
 
   return (
@@ -51,9 +84,9 @@ export default function NotificationSettingsModal() {
             </span>
             <div>
               <h3 className="font-extrabold text-base text-[#1c1917] font-editorial">
-                अलर्ट प्राथमिकताएं • Notification Preferences
+                अलर्ट प्राथमिकताएं • Notification & SMS Preferences
               </h3>
-              <p className="text-[11px] text-[#78716c]">{t('notifications.alertSettingsSubtitle')}</p>
+              <p className="text-[11px] text-[#78716c]">Configure SMS dispatches, Push alerts & thresholds</p>
             </div>
           </div>
           <button
@@ -65,15 +98,94 @@ export default function NotificationSettingsModal() {
         </div>
 
         <form onSubmit={handleSave} className="space-y-4 text-xs font-medium text-[#44403c]">
-          {/* Category Switches */}
+          {/* SMS & Push Notification Channels */}
           <div className="space-y-2.5">
             <span className="text-[10px] font-extrabold text-[#a8a29e] uppercase tracking-wider block">
-              Active Alert Channels
+              SMS Push Notifications & Delivery Channels
+            </span>
+
+            {/* SMS Toggle */}
+            <label className="flex items-center justify-between p-2.5 rounded-xl bg-[#faf8f5] border border-[#e7e5e4] cursor-pointer hover:bg-[#f5f2eb]">
+              <div>
+                <span className="font-bold text-[#1c1917] flex items-center gap-1.5">
+                  <span>📱 SMS Push Notifications (DLT / Fast2SMS)</span>
+                  <span className="text-[9px] bg-[#14532d] text-white px-1.5 py-0.2 rounded font-extrabold">Active</span>
+                </span>
+                <span className="text-[11px] text-[#78716c]">Send weather hazards & mandi alerts via SMS to mobile</span>
+              </div>
+              <input
+                type="checkbox"
+                checked={formState.enable_sms_alerts !== false}
+                onChange={(e) => setFormState({ ...formState, enable_sms_alerts: e.target.checked })}
+                className="w-4 h-4 accent-[#14532d] rounded"
+              />
+            </label>
+
+            {/* Browser Push Toggle */}
+            <label className="flex items-center justify-between p-2.5 rounded-xl bg-[#faf8f5] border border-[#e7e5e4] cursor-pointer hover:bg-[#f5f2eb]">
+              <div>
+                <span className="font-bold text-[#1c1917] flex items-center gap-1.5">
+                  <span>🔔 Web & Native Device Push Alerts</span>
+                </span>
+                <span className="text-[11px] text-[#78716c]">Instant browser and Android pop-up notifications</span>
+              </div>
+              <input
+                type="checkbox"
+                checked={formState.enable_push_alerts !== false}
+                onChange={(e) => {
+                  setFormState({ ...formState, enable_push_alerts: e.target.checked });
+                  if (e.target.checked) handlePushPermissionClick();
+                }}
+                className="w-4 h-4 accent-[#14532d] rounded"
+              />
+            </label>
+
+            {/* Recipient Phone & SMS Language */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+              <div>
+                <label className="text-[10px] font-bold text-[#78716c] block mb-1">
+                  Recipient Mobile (for SMS alerts)
+                </label>
+                <input
+                  type="tel"
+                  value={formState.recipient_mobile || '+91 98765 43210'}
+                  onChange={(e) => setFormState({ ...formState, recipient_mobile: e.target.value })}
+                  className="w-full px-3 py-1.5 rounded-xl border border-[#e7e5e4] bg-[#faf8f5] text-xs font-bold text-[#1c1917]"
+                  placeholder="+91 98765 43210"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-[#78716c] block mb-1">
+                  SMS Language Format
+                </label>
+                <select
+                  value={formState.sms_language || 'hi'}
+                  onChange={(e) => setFormState({ ...formState, sms_language: e.target.value })}
+                  className="w-full px-3 py-1.5 rounded-xl border border-[#e7e5e4] bg-[#faf8f5] text-xs font-bold text-[#1c1917]"
+                >
+                  <option value="hi">हिंदी (Hindi)</option>
+                  <option value="pa">ਪੰਜਾਬੀ (Punjabi)</option>
+                  <option value="mr">मराठी (Marathi)</option>
+                  <option value="ta">தமிழ் (Tamil)</option>
+                  <option value="te">తెలుగు (Telugu)</option>
+                  <option value="kn">ಕನ್ನಡ (Kannada)</option>
+                  <option value="bn">বাংলা (Bengali)</option>
+                  <option value="en">English</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Category Switches */}
+          <div className="space-y-2.5 pt-2 border-t border-[#f5f2eb]">
+            <span className="text-[10px] font-extrabold text-[#a8a29e] uppercase tracking-wider block">
+              Active Advisory Topics
             </span>
 
             <label className="flex items-center justify-between p-2.5 rounded-xl bg-[#faf8f5] border border-[#e7e5e4] cursor-pointer hover:bg-[#f5f2eb]">
               <div>
-                <span className="font-bold text-[#1c1917] block">{t('notifications.weatherAlerts')}</span>
+                <span className="font-bold text-[#1c1917] block">Rain & Weather Hazard Alerts</span>
                 <span className="text-[11px] text-[#78716c]">Alert when rain & heatwave exceed safety limits</span>
               </div>
               <input
@@ -86,7 +198,7 @@ export default function NotificationSettingsModal() {
 
             <label className="flex items-center justify-between p-2.5 rounded-xl bg-[#faf8f5] border border-[#e7e5e4] cursor-pointer hover:bg-[#f5f2eb]">
               <div>
-                <span className="font-bold text-[#1c1917] block">{t('notifications.mandiAlerts')}</span>
+                <span className="font-bold text-[#1c1917] block">Mandi Price Spike & Spot Alerts</span>
                 <span className="text-[11px] text-[#78716c]">Alert on sudden spot spikes or MSP divergences</span>
               </div>
               <input
@@ -99,7 +211,7 @@ export default function NotificationSettingsModal() {
 
             <label className="flex items-center justify-between p-2.5 rounded-xl bg-[#faf8f5] border border-[#e7e5e4] cursor-pointer hover:bg-[#f5f2eb]">
               <div>
-                <span className="font-bold text-[#1c1917] block">{t('notifications.schemeAlerts')}</span>
+                <span className="font-bold text-[#1c1917] block">PM-KISAN & PMFBY Scheme Alerts</span>
                 <span className="text-[11px] text-[#78716c]">Direct benefit release & claim intimation alerts</span>
               </div>
               <input
@@ -114,12 +226,12 @@ export default function NotificationSettingsModal() {
           {/* Threshold Sliders */}
           <div className="space-y-3 pt-2 border-t border-[#f5f2eb]">
             <span className="text-[10px] font-extrabold text-[#a8a29e] uppercase tracking-wider block">
-              Custom Thresholds
+              Custom Alert Thresholds
             </span>
 
             <div>
               <div className="flex justify-between items-center mb-1">
-                <span>{t('notifications.weatherThreshold')}</span>
+                <span>Rain Probability Alert Limit (%)</span>
                 <span className="font-extrabold text-[#14532d]">{formState.rain_probability_threshold}%</span>
               </div>
               <input
@@ -177,12 +289,12 @@ export default function NotificationSettingsModal() {
             </div>
           </div>
 
-          {/* Test Simulation Buttons */}
-          <div className="pt-2 border-t border-[#f5f2eb] bg-[#faf8f5] p-3 rounded-2xl">
-            <span className="text-[10px] font-extrabold text-[#78716c] uppercase block mb-1.5">
-              🧪 Test Live Auto-Alert Pipeline
+          {/* Test Simulation & SMS Dispatch Buttons */}
+          <div className="pt-2 border-t border-[#f5f2eb] bg-[#faf8f5] p-3 rounded-2xl space-y-2">
+            <span className="text-[10px] font-extrabold text-[#78716c] uppercase block">
+              🧪 Test Live Notification & SMS Pipeline
             </span>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={() => handleTestTrigger('weather')}
@@ -199,7 +311,20 @@ export default function NotificationSettingsModal() {
               >
                 Simulate Wheat Surge (+6%)
               </button>
+              <button
+                type="button"
+                onClick={handleTestSms}
+                disabled={simulating}
+                className="px-3 py-1.5 bg-[#14532d] text-white rounded-xl text-[11px] font-bold hover:bg-[#052e16] transition active:scale-98 flex items-center gap-1"
+              >
+                <span>📱 Dispatch Test SMS</span>
+              </button>
             </div>
+            {smsResult && (
+              <div className="text-[11px] font-bold text-[#14532d] bg-white p-2 rounded-xl border border-[#e7e5e4]">
+                {smsResult}
+              </div>
+            )}
           </div>
 
           {/* Actions */}
